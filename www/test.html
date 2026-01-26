@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>WebGPU Test</title>
+</head>
+
+<body>
+    <h1>WebGPU Test</h1>
+    <div id="status">Running...</div>
+    <canvas id="gpu-canvas" width="64" height="64"></canvas>
+    <script type="module">
+        import init, { GpuRenderer, setup } from '../pkg/fractal_rs.js'; // Adjust path if needed
+
+        async function runTest() {
+            try {
+                await init();
+                setup();
+
+                const canvas = document.getElementById('gpu-canvas');
+                // Force size multiple of 64 or 256 bytes logic
+                // 64 width * 4 bytes = 256 bytes (aligned)
+
+                if (!navigator.gpu) {
+                    document.getElementById('status').innerText = "WebGPU not supported in this browser.";
+                    return;
+                }
+
+                const renderer = await GpuRenderer.new(canvas);
+                renderer.resize(64, 64);
+
+                // Render a view that should definitely have content (center)
+                renderer.render(-2.0, 1.0, -1.5, 1.5, 100);
+
+                const pixels = await renderer.read_pixels(); // Returns Uint8Array
+
+                // Check if pixels are all black/zero
+                let allZero = true;
+                let nonZeroCount = 0;
+                let firstNonZero = -1;
+                for (let i = 0; i < pixels.length; i += 4) {
+                    if (pixels[i] !== 0 || pixels[i + 1] !== 0 || pixels[i + 2] !== 0) {
+                        allZero = false;
+                        nonZeroCount++;
+                        if (firstNonZero === -1) {
+                            firstNonZero = i;
+                        }
+                    }
+                }
+
+                console.log("Total pixels:", pixels.length / 4);
+                console.log("Non-zero pixels:", nonZeroCount);
+
+                let msg;
+                if (nonZeroCount > 0) {
+                    if (firstNonZero != -1) {
+                        msg = `TEST PASSED! First non-zero pixel at index ${firstNonZero} with values: [${pixels[firstNonZero]}, ${pixels[firstNonZero + 1]}, ${pixels[firstNonZero + 2]}, ${pixels[firstNonZero + 3]}]`;
+                        console.log(msg);
+                        document.getElementById('status').innerText = msg;
+                        document.getElementById('status').style.color = "lightgreen";
+                    } else { // This case should ideally not be reached if nonZeroCount > 0
+                        msg = `TEST PASSED: ${nonZeroCount} non-zero pixels, but firstNonZero index not found.`;
+                        console.log(msg);
+                        document.getElementById('status').innerText = msg;
+                        document.getElementById('status').style.color = "lightgreen";
+                    }
+                } else {
+                    msg = "TEST FAILED: All pixels are black (0,0,0,0).";
+                    console.error(msg);
+                    document.getElementById('status').innerText = msg;
+                    document.getElementById('status').style.color = "red";
+                }
+
+            } catch (e) {
+                console.error(e);
+                document.getElementById('status').innerText = "ERROR: " + e;
+                document.getElementById('status').style.color = "red";
+            }
+        }
+
+        runTest();
+    </script>
+</body>
+
+</html>

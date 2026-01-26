@@ -1,0 +1,44 @@
+[package]
+name = "fractal-rs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["console_error_panic_hook"]
+
+[dependencies]
+wasm-bindgen = "0.2.84"
+wasm-bindgen-futures = "0.4"
+bytemuck = { version = "1.13", features = ["derive"] }
+wgpu = { version = "23.0", default-features = false, features = ["webgl", "wgsl", "webgpu"] }
+futures = "0.3"
+
+# The `console_error_panic_hook` crate provides better debugging of panics by
+# logging them with `console.error`. This is great for development, but requires
+# all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
+# code size when deploying.
+console_error_panic_hook = { version = "0.1.7", optional = true }
+
+[dependencies.web-sys]
+version = "0.3.61"
+features = [
+  "CanvasRenderingContext2d",
+  "Document",
+  "Element",
+  "HtmlCanvasElement",
+  "Window",
+  "console",
+  "ImageData",
+  "Performance",
+  "Navigator",
+  "Gpu",
+  "GpuAdapter",
+  "GpuDevice",
+  "GpuQueue",
+]
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.34"
