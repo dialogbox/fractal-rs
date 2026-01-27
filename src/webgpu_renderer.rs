@@ -6,14 +6,13 @@ use crate::console;
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Uniforms {
-    width: f32,
-    height: f32,
-    x_min: f32,
-    x_max: f32,
-    y_min: f32,
-    y_max: f32,
+    width_hi: f32, width_lo: f32, height_hi: f32, height_lo: f32,
+    x_min_hi: f32, x_min_lo: f32, x_max_hi: f32, x_max_lo: f32,
+    y_min_hi: f32, y_min_lo: f32, y_max_hi: f32, y_max_lo: f32,
     max_iter: u32,
-    padding: u32,
+    precision_mode: u32,
+    padding1: u32,
+    padding2: u32,
 }
 
 #[wasm_bindgen]
@@ -41,14 +40,12 @@ impl GpuRenderer {
     pub async fn new(canvas: web_sys::HtmlCanvasElement) -> Result<GpuRenderer, JsValue> {
         web_sys::console::log_1(&"Rust: Creating WGPU Instance...".into());
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::BROWSER_WEBGPU, // Force WebGPU, fail if not available (WebGL no compute)
+            backends: wgpu::Backends::BROWSER_WEBGPU,
             ..Default::default()
         });
-        web_sys::console::log_1(&"Rust: Instance created. Creating Surface...".into());
-
+        
         let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas))
             .map_err(|e| JsValue::from_str(&format!("Failed to create surface: {}", e)))?;
-        web_sys::console::log_1(&"Rust: Surface created.".into());
 
         let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
@@ -56,7 +53,6 @@ impl GpuRenderer {
             force_fallback_adapter: false,
         }).await.ok_or("Failed to find a WebGPU adapter")?;
 
-        // Use limits from the adapter, but ensure we have basic compute support
         let mut limits = adapter.limits();
         if limits.max_storage_textures_per_shader_stage < 1 {
              limits.max_storage_textures_per_shader_stage = 1;
@@ -78,7 +74,6 @@ impl GpuRenderer {
             depth_or_array_layers: 1,
         };
 
-        // Texture needs to be usable as Storage (Compute) and Sampled (Render)
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Output Texture"),
             size: texture_size,
@@ -108,14 +103,16 @@ impl GpuRenderer {
         });
 
         let uniforms = Uniforms {
-             width: width as f32,
-             height: height as f32,
-             x_min: -2.0,
-             x_max: 1.0,
-             y_min: -1.0,
-             y_max: 1.0,
+             width_hi: width as f32, width_lo: 0.0,
+             height_hi: height as f32, height_lo: 0.0,
+             x_min_hi: -2.0, x_min_lo: 0.0,
+             x_max_hi: 1.0, x_max_lo: 0.0,
+             y_min_hi: -1.0, y_min_lo: 0.0,
+             y_max_hi: 1.0, y_max_lo: 0.0,
              max_iter: 100,
-             padding: 0,
+             precision_mode: 0,
+             padding1: 0,
+             padding2: 0,
         };
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -124,7 +121,6 @@ impl GpuRenderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // 1. Compute Bind Group (Uniforms + Storage)
         let compute_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Compute Layout"),
             entries: &[
@@ -152,7 +148,6 @@ impl GpuRenderer {
             ],
         });
 
-        // 2. Render Bind Group (Sampled Texture + Sampler)
         let render_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Render Layout"),
             entries: &[
@@ -265,7 +260,6 @@ impl GpuRenderer {
         self.width = width;
         self.height = height;
         
-        // Recreate texture
         let texture_size = wgpu::Extent3d {
             width,
             height,
@@ -285,7 +279,6 @@ impl GpuRenderer {
         
         let texture_view = self.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Recreate Bind Groups
         self.compute_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Compute Bind Group"),
             layout: &self.compute_bind_group_layout,
@@ -311,22 +304,39 @@ impl GpuRenderer {
     
     pub fn render(&self, x_min: f64, x_max: f64, y_min: f64, y_max: f64, max_iter: u32) {
         console::log_1(&format!("Rust: Rendering with size {}x{}", self.width, self.height).into());
+
+        fn split(v: f64) -> (f32, f32) {
+            let hi = v as f32;
+            let lo = (v - hi as f64) as f32;
+            (hi, lo)
+        }
+
+        let (w_hi, w_lo) = split(self.width as f64);
+        let (h_hi, h_lo) = split(self.height as f64);
+        let (x_min_hi, x_min_lo) = split(x_min);
+        let (x_max_hi, x_max_lo) = split(x_max);
+        let (y_min_hi, y_min_lo) = split(y_min);
+        let (y_max_hi, y_max_lo) = split(y_max);
+
+        let zoom_width = x_max - x_min;
+        let precision_mode = if zoom_width < 1e-4 { 1 } else { 0 };
+
+        console::log_1(&format!("Rust: Precision Mode: {} (Zoom: {:e})", precision_mode, zoom_width).into());
+
         let uniforms = Uniforms {
-             width: self.width as f32,
-             height: self.height as f32,
-             x_min: x_min as f32,
-             x_max: x_max as f32,
-             y_min: y_min as f32,
-             y_max: y_max as f32,
+             width_hi: w_hi, width_lo: w_lo, height_hi: h_hi, height_lo: h_lo,
+             x_min_hi, x_min_lo, x_max_hi, x_max_lo,
+             y_min_hi, y_min_lo, y_max_hi, y_max_lo,
              max_iter,
-             padding: 0,
+             precision_mode,
+             padding1: 0,
+             padding2: 0,
         };
         
         self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
         
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         
-        // Compute Pass
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None, timestamp_writes: None });
             cpass.set_pipeline(&self.compute_pipeline);
@@ -335,7 +345,6 @@ impl GpuRenderer {
             cpass.dispatch_workgroups((self.width + workgroup_size - 1) / workgroup_size, (self.height + workgroup_size - 1) / workgroup_size, 1);
         }
         
-        // Render Pass (Blit to Screen)
         let frame = match self.surface.get_current_texture() {
             Ok(frame) => frame,
             Err(e) => {
@@ -362,7 +371,7 @@ impl GpuRenderer {
             });
             rpass.set_pipeline(&self.render_pipeline);
             rpass.set_bind_group(0, &self.render_bind_group, &[]);
-            rpass.draw(0..3, 0..1); // Draw 3 vertices (Triangle covering screen)
+            rpass.draw(0..3, 0..1);
         }
 
         self.queue.submit(Some(encoder.finish()));
@@ -416,7 +425,6 @@ impl GpuRenderer {
             tx.send(v).ok();
         });
 
-        // Await the mapping
         match rx.await {
             Ok(Ok(())) => {},
             _ => return Err("Failed to map buffer".into()),
@@ -427,7 +435,6 @@ impl GpuRenderer {
         drop(data);
         staging_buffer.unmap();
 
-        // Remove padding if necessary
         if padding > 0 {
              let mut unpadded = Vec::with_capacity((unpadded_bytes_per_row * self.height) as usize);
              for chunk in result.chunks(padded_bytes_per_row as usize) {
