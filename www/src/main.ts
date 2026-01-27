@@ -110,34 +110,71 @@ async function run() {
   let startX = 0;
   let startY = 0;
 
-  const render = () => {
+  // --- Progressive Rendering State ---
+  let pendingRenderId = 0;
+  const passScales = [0.125, 0.25, 0.5, 1.0]; // 1/8, 1/4, 1/2, 1/1
+
+
+  // Render function that processes one pass
+  const renderPass = (passIndex: number, renderId: number) => {
+    if (renderId !== pendingRenderId) return; // Cancelled
+
+    const scale = passScales[passIndex];
+    const scaledWidth = Math.floor(width * scale);
+    const scaledHeight = Math.floor(height * scale);
+
+    // Log only on first pass to avoid spam
+    if (passIndex === 0) {
+      // console.log(`Starting Render: Zoom=${zoomWidth.toExponential(2)}`);
+    }
+
+    // Update UI Info
+    const zoomLevel = Math.log10(3.0 / zoomWidth);
+    const maxIter = Math.floor(100 + zoomLevel * 100);
+    infoDiv.innerText = `Zoom: ${zoomWidth.toExponential(2)} | Iters: ${maxIter} | Res: ${(scale * 100).toFixed(1)}%`;
+
     const aspectRatio = width / height;
     const zoomHeight = zoomWidth / aspectRatio;
-
     const xMin = centerX - zoomWidth / 2;
     const xMax = centerX + zoomWidth / 2;
     const yMin = centerY - zoomHeight / 2;
     const yMax = centerY + zoomHeight / 2;
 
-    // Reduce logging frequency or level
-    // console.log(`Rendering: mode=${mode}, center=(${centerX}, ${centerY}), width=${zoomWidth}`);
-
-    const zoomLevel = Math.log10(3.0 / zoomWidth);
-    const maxIter = Math.floor(100 + zoomLevel * 100);
-
-    infoDiv.innerText = `Zoom: ${zoomWidth.toExponential(2)} | Iters: ${maxIter}`;
-
+    // Resize Render Target (but keep CSS size)
     if (mode === 'cpu' && cpuRenderer && ctx) {
+      canvas.width = scaledWidth;
+      canvas.height = scaledHeight;
+      // IMPORTANT: restore context after resize (context is mostly reset)
+      // Actually getContext is persistent, but properties might reset?
+      // For putImageData it doesn't matter.
+
+      cpuRenderer.resize(scaledWidth, scaledHeight);
       cpuRenderer.render(xMin, xMax, yMin, yMax, maxIter);
+
       const pixelsPtr = cpuRenderer.get_pixels();
       const pixelsLen = cpuRenderer.get_pixels_len();
       const memory = wasm.memory;
       const pixels = new Uint8ClampedArray(memory.buffer, pixelsPtr, pixelsLen);
-      const imageData = new ImageData(pixels, width, height);
+      const imageData = new ImageData(pixels, scaledWidth, scaledHeight);
       ctx.putImageData(imageData, 0, 0);
+
     } else if (mode === 'gpu' && gpuRenderer) {
+      gpuCanvas.width = scaledWidth;
+      gpuCanvas.height = scaledHeight;
+      gpuRenderer.resize(scaledWidth, scaledHeight);
       gpuRenderer.render(xMin, xMax, yMin, yMax, maxIter);
     }
+
+    // Schedule next pass
+    if (passIndex < passScales.length - 1) {
+      requestAnimationFrame(() => renderPass(passIndex + 1, renderId));
+    }
+  };
+
+  const startRender = () => {
+    pendingRenderId++; // Invalidate previous renders
+    const myId = pendingRenderId;
+    requestAnimationFrame(() => renderPass(0, myId));
   };
 
   const switchMode = (newMode: 'cpu' | 'gpu') => {
@@ -147,46 +184,40 @@ async function run() {
     if (mode === 'cpu') {
       canvas.style.display = 'block';
       gpuCanvas.style.display = 'none';
-      if (cpuRenderer) render();
     } else {
       canvas.style.display = 'none';
       gpuCanvas.style.display = 'block';
-      if (gpuRenderer) render();
     }
+    startRender();
   };
 
-  // Helper: Map pixel to complex
-  const toComplex = (x: number, y: number) => {
-    // x, y are LOGICAL pixels from mouse event
-    const aspectRatio = logicalWidth / logicalHeight;
-    const zoomHeight = zoomWidth / aspectRatio;
-    // Map relative to LOGICAL width/height
-    const mapX = centerX - zoomWidth / 2 + (x / logicalWidth) * zoomWidth;
-    const mapY = centerY - zoomHeight / 2 + (y / logicalHeight) * zoomHeight;
-    return { cx: mapX, cy: mapY };
-  };
-
-  render();
+  // Initial Render
+  startRender();
 
   // Interaction (Attached to Window to catch both canvases)
+  let dragStartComplexX = 0;
+  let dragStartComplexY = 0;
+
   window.addEventListener('mousedown', (e) => {
     if ((e.target as HTMLElement).tagName !== 'CANVAS') return;
     isDragging = true;
     startX = e.clientX;
     startY = e.clientY;
+    dragStartComplexX = centerX;
+    dragStartComplexY = centerY;
   });
 
-  // UI Overlay Canvas
+  // UI Overlay Canvas logic (Unchanged mostly)
   const uiCanvas = document.createElement('canvas');
   uiCanvas.style.position = 'absolute';
   uiCanvas.style.top = '0';
   uiCanvas.style.left = '0';
-  uiCanvas.style.pointerEvents = 'none'; // Let clicks pass through
+  uiCanvas.style.pointerEvents = 'none';
   uiCanvas.width = width;
   uiCanvas.height = height;
   uiCanvas.style.width = logicalWidth + 'px';
   uiCanvas.style.height = logicalHeight + 'px';
-  uiCanvas.style.zIndex = '50'; // On top of render canvases, below controls
+  uiCanvas.style.zIndex = '50';
   document.body.appendChild(uiCanvas);
   const uiCtx = uiCanvas.getContext('2d');
   if (uiCtx) {
@@ -194,51 +225,162 @@ async function run() {
   }
 
   window.addEventListener('mousemove', (e) => {
-    if (!isDragging || !uiCtx) return;
-
-    uiCtx.clearRect(0, 0, width, height);
+    if (!isDragging) return;
 
     const currentX = e.clientX;
     const currentY = e.clientY;
-    const w = currentX - startX;
-    const h = currentY - startY;
+    const deltaX = currentX - startX;
+    const deltaY = currentY - startY;
 
-    uiCtx.strokeStyle = e.shiftKey ? 'red' : 'white';
-    uiCtx.lineWidth = 2;
-    uiCtx.strokeRect(startX, startY, w, h);
-    // Note: We don't need to manually scale strokeRect coords if we called uiCtx.scale(dpr,dpr)
-    // because startX/Y are logical, and context scale handles mapping to physical.
+    // Pan Logic:
+    const aspectRatio = logicalWidth / logicalHeight;
+    const zoomHeight = zoomWidth / aspectRatio;
+    const mapPixelW = zoomWidth / logicalWidth;
+    const mapPixelH = zoomHeight / logicalHeight;
+
+    centerX = dragStartComplexX - deltaX * mapPixelW;
+    centerY = dragStartComplexY - deltaY * mapPixelH;
+
+    startRender();
   });
 
-  window.addEventListener('mouseup', (e) => {
+  window.addEventListener('mouseup', () => {
     if (!isDragging) return;
     isDragging = false;
-    if (uiCtx) uiCtx.clearRect(0, 0, width, height);
+  });
 
-    const endX = e.clientX;
-    const endY = e.clientY;
-    const deltaX = Math.abs(endX - startX);
-    const deltaY = Math.abs(endY - startY);
+  // Bounce Animation Helper
+  let isBouncing = false;
+  let lastBounceTime = 0;
 
-    if (deltaX < 5 && deltaY < 5) return;
+  const triggerBounce = (direction: 'in' | 'out') => {
+    const now = Date.now();
+    if (isBouncing || (now - lastBounceTime < 500)) return; // Debounce 500ms
 
-    const boxCenterXPix = (startX + endX) / 2;
-    const boxCenterYPix = (startY + endY) / 2;
-    const { cx: newCenterX, cy: newCenterY } = toComplex(boxCenterXPix, boxCenterYPix);
-    const factor = deltaX / logicalWidth;
+    isBouncing = true;
+    lastBounceTime = now;
 
-    if (factor === 0) return;
+    const targets = [canvas, gpuCanvas, uiCanvas];
+    const scale = direction === 'out' ? 0.95 : 1.05;
 
-    if (e.shiftKey) {
-      zoomWidth = zoomWidth / factor;
+    // Apply CSS transition
+    targets.forEach(el => {
+      el.style.transition = 'transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+      el.style.transform = `scale(${scale})`;
+    });
+
+    setTimeout(() => {
+      targets.forEach(el => {
+        el.style.transform = 'scale(1.0)';
+      });
+      setTimeout(() => {
+        targets.forEach(el => {
+          el.style.transition = '';
+        });
+        isBouncing = false;
+      }, 100);
+    }, 100);
+  };
+
+  // Wheel Zoom
+  window.addEventListener('wheel', (e) => {
+    e.preventDefault();
+
+    const mouseX = e.clientX;
+    const mouseY = e.clientY;
+
+    const zoomFactor = e.deltaY < 0 ? 0.9 : 1.1;
+    let newZoomWidth = zoomWidth * zoomFactor;
+
+    // Bounds definitions
+
+    // Bounding Box (Allowed Visible Area)
+    const BOUND_X_MIN = -2.0;
+    const BOUND_X_MAX = 1.0;
+    const BOUND_Y_MIN = -1.2; // approx -1.0 with padding
+    const BOUND_Y_MAX = 1.2;
+
+    // Max Precision Limit (Zoom In)
+    // We want 1 pixel > Precision Epsilon
+    // DS (Double Single) has ~48 bits precision => 2^-48 ~= 3.55e-15
+    // Let's use a safe limit of 5.0e-15 per pixel.
+    const PRECISION_PER_PIXEL = 5.0e-15;
+    const MIN_ZOOM_WIDTH = logicalWidth * PRECISION_PER_PIXEL;
+
+    // Check Limits
+    if (newZoomWidth < MIN_ZOOM_WIDTH) {
+      if (zoomWidth <= MIN_ZOOM_WIDTH) {
+        triggerBounce('in');
+        return;
+      }
+      newZoomWidth = MIN_ZOOM_WIDTH;
     } else {
-      zoomWidth = zoomWidth * factor;
+      // Valid range
     }
 
-    centerX = newCenterX;
-    centerY = newCenterY;
-    render();
-  });
+    // Determine proposed center
+    const aspectRatio = logicalWidth / logicalHeight;
+    const uvX = mouseX / logicalWidth;
+    const uvY = mouseY / logicalHeight;
+
+    let nextCenterX = centerX + (uvX - 0.5) * (zoomWidth - newZoomWidth);
+    let nextCenterY = centerY + (uvY - 0.5) * (zoomWidth / aspectRatio - newZoomWidth / aspectRatio);
+
+    // Constraint Logic (Zoom Out / Panning)
+    const nextZoomHeight = newZoomWidth / aspectRatio;
+    let nextXMin = nextCenterX - newZoomWidth / 2;
+    let nextXMax = nextCenterX + newZoomWidth / 2;
+    let nextYMin = nextCenterY - nextZoomHeight / 2;
+    let nextYMax = nextCenterY + nextZoomHeight / 2;
+
+    // 2. Shift center if strictly inside bounds but hitting edge (Drift correction)
+    // If width > max allowed width (3.0), we clamp width.
+    if (newZoomWidth > 3.0) {
+      newZoomWidth = 3.0;
+      // Re-center if maxed out
+      nextCenterX = -0.5;
+      nextCenterY = 0.0;
+
+      // Max Width Bounce Logic
+      if (zoomWidth >= 3.0) {
+        triggerBounce('out');
+        return;
+      }
+    } else {
+      // Normal bound checking
+      if (nextXMin < BOUND_X_MIN) {
+        const shift = BOUND_X_MIN - nextXMin;
+        nextCenterX += shift;
+      }
+      if (nextXMax > BOUND_X_MAX) {
+        const shift = BOUND_X_MAX - nextXMax;
+        nextCenterX += shift;
+        // If double-constrained (width too big), clamp width effectively handled by max width check above? 
+        // No, we might be wider than interval but < 3.0? No, 3.0 IS the interval size.
+      }
+
+      // Recalculate Y based on new X
+      // Actually Y bounds are looser usually, but let's apply same logic
+      const maxH = 2.4;
+      if (nextZoomHeight > maxH) {
+        // If height exceeds max, we might need to clamp width based on aspect ratio
+        // But let's just clamp position first
+        nextCenterY = 0.0;
+      } else {
+        if (nextYMin < BOUND_Y_MIN) nextCenterY += (BOUND_Y_MIN - nextYMin);
+        if (nextYMax > BOUND_Y_MAX) nextCenterY += (BOUND_Y_MAX - nextYMax);
+      }
+    }
+
+    // Check if we effectively didn't move/zoom because of constraints, AND we tried to zoom out
+    // if (zoomFactor > 1.0) { ... } // Logic moved above
+
+    centerX = nextCenterX;
+    centerY = nextCenterY;
+    zoomWidth = newZoomWidth;
+
+    startRender();
+  }, { passive: false });
 
   window.addEventListener('resize', () => {
     logicalWidth = window.innerWidth;
@@ -246,31 +388,27 @@ async function run() {
     width = Math.floor(logicalWidth * dpr);
     height = Math.floor(logicalHeight * dpr);
 
-    canvas.width = width;
-    canvas.height = height;
-    canvas.style.width = logicalWidth + 'px';
-    canvas.style.height = logicalHeight + 'px';
-
-    gpuCanvas.width = width;
-    gpuCanvas.height = height;
-    gpuCanvas.style.width = logicalWidth + 'px';
-    gpuCanvas.style.height = logicalHeight + 'px';
+    // Initial resize to max for buffers (optional, but good practice)
+    if (cpuRenderer) cpuRenderer.resize(width, height);
+    if (gpuRenderer) gpuRenderer.resize(width, height);
 
     uiCanvas.width = width;
     uiCanvas.height = height;
     uiCanvas.style.width = logicalWidth + 'px';
     uiCanvas.style.height = logicalHeight + 'px';
 
-    // UI Canvas needs scaling for logical drawing if we rely on transform, 
-    // OR we scale coordinates manually. Let's use transform for UI simplicity.
     if (uiCtx) {
+      uiCtx.setTransform(1, 0, 0, 1, 0, 0); // Reset
       uiCtx.scale(dpr, dpr);
     }
 
-    if (cpuRenderer) cpuRenderer.resize(width, height);
-    if (gpuRenderer) gpuRenderer.resize(width, height);
+    // Canvas resizing happens inside startRender now
+    canvas.style.width = logicalWidth + 'px';
+    canvas.style.height = logicalHeight + 'px';
+    gpuCanvas.style.width = logicalWidth + 'px';
+    gpuCanvas.style.height = logicalHeight + 'px';
 
-    render();
+    startRender();
   });
 }
 
