@@ -47,7 +47,7 @@ fn ds_mul(a: DS, b: DS) -> DS {
     let b_lo = b.hi - b_hi;
     
     let prod = a.hi * b.hi;
-    let err = (a_hi * b_hi - prod) + a_hi * b_lo + a_lo * b_hi + a.lo * b.hi + a.hi * b.lo;
+    let err = (a_hi * b_hi - prod) + a_hi * b_lo + a_lo * b_hi + a_lo * b_lo + a.lo * b.hi + a.hi * b.lo;
     
     let hi = prod + err;
     let lo = err - (hi - prod);
@@ -61,7 +61,7 @@ fn ds_sqr(a: DS) -> DS {
      let a_lo = a.hi - a_hi;
      
      let prod = a.hi * a.hi;
-     let err = (a_hi * a_hi - prod) + 2.0 * a_hi * a_lo + 2.0 * a.lo * a.hi; 
+     let err = (a_hi * a_hi - prod) + 2.0 * a_hi * a_lo + a_lo * a_lo + 2.0 * a.lo * a.hi; 
      let hi = prod + err;
      let lo = err - (hi - prod);
      return DS(hi, lo);
