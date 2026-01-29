@@ -36,29 +36,35 @@ fn ds_sub(a: DS, b: DS) -> DS {
 }
 
 fn ds_mul(a: DS, b: DS) -> DS {
-    let C = 134217729.0;
+    let C = 4097.0; // 2^12 + 1
     let cone = a.hi * C;
     let ctwo = b.hi * C;
     let a_hi = cone - (cone - a.hi);
     let a_lo = a.hi - a_hi;
     let b_hi = ctwo - (ctwo - b.hi);
     let b_lo = b.hi - b_hi;
+    
     let t1 = a.hi * b.hi;
-    let t2 = (((a_hi * b_hi - t1) + a_hi * b_lo) + a_lo * b_hi) + a.lo * b.lo; // Optimization: Added a.lo*b.lo
-    let hi = t1 + t2;
-    let lo = t2 - (hi - t1);
+    let t2 = (((a_hi * b_hi - t1) + a_hi * b_lo) + a_lo * b_hi);
+    let t3 = t2 + (a.hi * b.lo + a.lo * b.hi);
+    
+    let hi = t1 + t3;
+    let lo = t3 - (hi - t1);
     return DS(hi, lo);
 }
 
 fn ds_sqr(a: DS) -> DS {
-    let C = 134217729.0;
+    let C = 4097.0; // 2^12 + 1
     let cone = a.hi * C;
     let a_hi = cone - (cone - a.hi);
     let a_lo = a.hi - a_hi;
+    
     let t1 = a.hi * a.hi;
-    let t2 = ((a_hi * a_hi - t1) + 2.0 * a_hi * a_lo) + a.lo * a.lo; // Optimization
-    let hi = t1 + t2;
-    let lo = t2 - (hi - t1);
+    let t2 = ((a_hi * a_hi - t1) + 2.0 * a_hi * a_lo);
+    let t3 = t2 + (2.0 * a.hi * a.lo);
+    
+    let hi = t1 + t3;
+    let lo = t3 - (hi - t1);
     return DS(hi, lo);
 }
 

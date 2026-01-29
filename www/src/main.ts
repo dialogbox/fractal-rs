@@ -1,5 +1,87 @@
 import init, { GpuRenderer, setup } from '../../pkg/fractal_rs';
 
+// --- PRECISION MATH ---
+class PreciseNumber {
+  private value: bigint;
+  private static SCALE = 1_000_000_000_000_000_000n; // 18 decimals
+  private static SCALE_F = 1e18;
+
+  constructor(val: bigint) {
+    this.value = val;
+  }
+
+  static fromNumber(n: number): PreciseNumber {
+    return new PreciseNumber(BigInt(Math.round(n * PreciseNumber.SCALE_F)));
+  }
+
+  static fromString(s: string): PreciseNumber {
+    const isNeg = s.startsWith('-');
+    if (isNeg) s = s.substring(1);
+    const scale = PreciseNumber.SCALE;
+    
+    const dot = s.indexOf('.');
+    let big: bigint;
+    if (dot === -1) {
+        big = BigInt(s) * scale;
+    } else {
+        const intS = s.substring(0, dot);
+        const fracS = s.substring(dot + 1).padEnd(18, '0').slice(0, 18);
+        big = BigInt(intS) * scale + BigInt(fracS);
+    }
+    return new PreciseNumber(isNeg ? -big : big);
+  }
+
+  toString(): string {
+     // const s = this.value.toString(); // unused
+     const isNeg = this.value < 0n;
+     let abs = isNeg ? -this.value : this.value;
+     let str = abs.toString().padStart(19, '0'); 
+     const dotPos = str.length - 18;
+     const intPart = str.slice(0, dotPos);
+     const fracPart = str.slice(dotPos);
+     let res = `${intPart}.${fracPart}`;
+     res = res.replace(/\.?0+$/, "");
+     if (res === "") res = "0";
+     if (isNeg) res = "-" + res;
+     return res;
+  }
+
+  toExponential(digits: number): string {
+     return Number(this.toString()).toExponential(digits);
+  }
+
+  toNumber(): number {
+      return Number(this.value) / PreciseNumber.SCALE_F;
+  }
+  
+  add(other: PreciseNumber): PreciseNumber {
+      return new PreciseNumber(this.value + other.value);
+  }
+  
+  sub(other: PreciseNumber): PreciseNumber {
+      return new PreciseNumber(this.value - other.value);
+  }
+  
+  mul(limit: number): PreciseNumber {
+      const scalar = BigInt(Math.round(limit * 1e9)); 
+      const res = (this.value * scalar) / 1_000_000_000n;
+      return new PreciseNumber(res);
+  }
+  
+  scale(factor: number): PreciseNumber {
+      const f = BigInt(Math.round(factor * 1e6));
+      return new PreciseNumber((this.value * f) / 1_000_000n);
+  }
+  
+  div(val: number): PreciseNumber { 
+       const div = BigInt(Math.round(val));
+       return new PreciseNumber(this.value / div);
+  }
+  
+  lt(other: PreciseNumber): boolean { return this.value < other.value; }
+  gt(other: PreciseNumber): boolean { return this.value > other.value; }
+}
+
 async function run() {
   console.log("Starting App...");
   await init();
@@ -44,10 +126,26 @@ async function run() {
   let width = 800;
   let height = 600;
 
-  // View State
-  let centerX = -0.5;
-  let centerY = 0.0;
-  let zoomWidth = 3.0; // Starts showing full width
+  // --- STATE ---
+  let centerX = PreciseNumber.fromNumber(-0.5);
+  let centerY = PreciseNumber.fromNumber(0.0);
+  let zoomWidth = PreciseNumber.fromNumber(3.0);
+
+  // URL Params Initialization
+  const params = new URLSearchParams(window.location.search);
+  const pX = params.get('x');
+  const pY = params.get('y');
+  const pW = params.get('w');
+
+  if (pX) {
+      try { centerX = PreciseNumber.fromString(pX); } catch (e) { console.error("Invalid x param", e); }
+  }
+  if (pY) {
+      try { centerY = PreciseNumber.fromString(pY); } catch (e) { console.error("Invalid y param", e); }
+  }
+  if (pW) {
+      try { zoomWidth = PreciseNumber.fromString(pW); } catch (e) { console.error("Invalid w param", e); }
+  } // Starts showing full width
 
   // --- PERSISTENCE & STYLING ---
 
@@ -71,6 +169,54 @@ async function run() {
   // Canvases are absolute, but centered?
   // Let's make a wrapper logic inside updateLayout.
   // NO. `canvas { position: absolute; } ` inside a flex container centers them if we use margin:auto? No.
+
+  // Buttons (created once)
+  const btnContainer = document.createElement("div");
+  btnContainer.id = "btn-container"; // Add ID for retrieval
+  btnContainer.style.marginTop = "8px";
+  btnContainer.style.display = "none"; // Hidden by default
+  btnContainer.style.gap = "8px";
+  infoDiv.appendChild(btnContainer); // Add to infoDiv
+
+  const btnCopyCoords = document.createElement("button");
+  btnCopyCoords.innerText = "Copy Coords";
+  btnCopyCoords.style.cursor = "pointer";
+  btnCopyCoords.style.padding = "4px 8px";
+
+  const btnCopyUrl = document.createElement("button");
+  btnCopyUrl.innerText = "Copy URL";
+  btnCopyUrl.style.cursor = "pointer";
+  btnCopyUrl.style.padding = "4px 8px";
+
+  btnContainer.appendChild(btnCopyCoords);
+  btnContainer.appendChild(btnCopyUrl);
+
+  // Copy Logic
+  const copyToClipboard = async (text: string) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        const originalBg = infoDiv.style.backgroundColor;
+        infoDiv.style.backgroundColor = "rgba(0, 100, 0, 0.8)"; // Flash Green
+        setTimeout(() => infoDiv.style.backgroundColor = originalBg, 200);
+      } catch (err) {
+        // Fallback for non-secure context (dev) if needed, but modern browsers usually support writeText on localhost
+        console.error('Failed to copy', err);
+        alert("Clipboard API failed (Context not secure?): " + err);
+      }
+  };
+
+  btnCopyCoords.onclick = () => {
+      const txt = `x=${centerX.toString()}\ny=${centerY.toString()}\nw=${zoomWidth.toString()}`;
+      copyToClipboard(txt);
+  };
+
+  btnCopyUrl.onclick = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("x", centerX.toString());
+      url.searchParams.set("y", centerY.toString());
+      url.searchParams.set("w", zoomWidth.toString());
+      copyToClipboard(url.toString());
+  };
 
   // Let's inject a Wrapper.
   const wrapper = document.createElement('div');
@@ -171,7 +317,7 @@ async function run() {
       gpuRenderer = r;
       gpuRenderer.resize(width, height); // Initial size
       console.log("GPU Ready");
-      infoDiv.innerText = "GPU Ready";
+      // infoDiv.innerText = "GPU Ready";
       startRender();
     }).catch(e => {
       console.error("GPU Fail", e);
@@ -187,16 +333,53 @@ async function run() {
     if (renderId !== pendingRenderId) return;
 
     // Info
-    const zoomLevel = Math.log10(3.0 / zoomWidth);
+    const zoomLevel = Math.log10(3.0 / zoomWidth.toNumber());
     const maxIter = Math.floor(100 + zoomLevel * 100);
     const resPercent = (100.0 / step).toFixed(1);
-    infoDiv.innerText = `Zoom: ${zoomWidth.toExponential(2)} | Iters: ${maxIter} | Res: ${resPercent}% (Step ${step})`;
+    
+    // Use a specific span for text to avoid overwriting buttons
+    let textSpan = infoDiv.querySelector("#info-text");
+    let btnContainer = infoDiv.querySelector("#btn-container") as HTMLElement;
 
-    const zoomHeight = zoomWidth / FRACTAL_ASPECT;
-    const xMin = centerX - zoomWidth / 2;
-    const xMax = centerX + zoomWidth / 2;
-    const yMin = centerY - zoomHeight / 2;
-    const yMax = centerY + zoomHeight / 2;
+    if (!textSpan) {
+        textSpan = document.createElement("div");
+        textSpan.id = "info-text";
+        if (btnContainer) {
+            infoDiv.insertBefore(textSpan, btnContainer);
+        } else {
+            infoDiv.appendChild(textSpan);
+        }
+    }
+    
+    textSpan.innerHTML = `
+      <div>Zoom: ${zoomWidth.toExponential(2)}</div>
+      <div>Iters: ${maxIter}</div>
+      <div>Res: ${resPercent}% (Step ${step})</div>
+      <div id="coords-detail" style="display: none; font-size: 0.8em; margin-top: 5px; color: #aaa;">
+        x=${centerX.toString()}<br>
+        y=${centerY.toString()}<br>
+        w=${zoomWidth.toString()}
+      </div>
+    `;
+    
+    const details = textSpan.querySelector("#coords-detail") as HTMLElement;
+    
+    // We need to attach the hover listener to infoDiv to toggle this specific element too
+    infoDiv.onmouseenter = () => {
+        if (btnContainer) btnContainer.style.display = "flex";
+        if (details) details.style.display = "block";
+    };
+    infoDiv.onmouseleave = () => {
+         if (btnContainer) btnContainer.style.display = "none";
+         if (details) details.style.display = "none";
+    };
+
+
+    const zoomHeight = zoomWidth.div(FRACTAL_ASPECT);
+    const xMin = centerX.sub(zoomWidth.div(2)).toNumber();
+    const xMax = centerX.add(zoomWidth.div(2)).toNumber();
+    const yMin = centerY.sub(zoomHeight.div(2)).toNumber();
+    const yMax = centerY.add(zoomHeight.div(2)).toNumber();
 
     if (gpuRenderer) {
       if (gpuCanvas.width !== width) {
@@ -243,36 +426,38 @@ async function run() {
   // --- CONSTRAINTS ---
   const applyConstraints = () => {
     // 1. Zoom Limits
-    // Max Precision
-    const PRECISION_PER_PIXEL = 5.0e-15;
-    const MIN_ZOOM = logicalWidth * PRECISION_PER_PIXEL;
-    // Max Zoom Out = FRACTAL_W (strict)
-    const MAX_ZOOM = FRACTAL_W;
+    // Actually we support more. Let's use 1e-35 logic later.
+    const MIN_ZOOM = PreciseNumber.fromNumber(logicalWidth * 1e-15); // Temporary floor
+    const MAX_ZOOM = PreciseNumber.fromNumber(FRACTAL_W);
 
-    if (zoomWidth < MIN_ZOOM) zoomWidth = MIN_ZOOM;
-    if (zoomWidth > MAX_ZOOM) zoomWidth = MAX_ZOOM;
+    if (zoomWidth.lt(MIN_ZOOM)) zoomWidth = MIN_ZOOM;
+    if (zoomWidth.gt(MAX_ZOOM)) zoomWidth = MAX_ZOOM;
 
-    // 2. Pan Limits
-    // Bounds checks are now strictly edges because V_AR == F_AR
-    const zoomHeight = zoomWidth / FRACTAL_ASPECT;
-    const minCenterX = BOUND_X_MIN + zoomWidth / 2;
-    const maxCenterX = BOUND_X_MAX - zoomWidth / 2;
-    const minCenterY = BOUND_Y_MIN + zoomHeight / 2;
-    const maxCenterY = BOUND_Y_MAX - zoomHeight / 2;
+    const zoomHeight = zoomWidth.div(FRACTAL_ASPECT);
+    
+    // Bounds as PreciseNumber
+    const bXMin = PreciseNumber.fromNumber(BOUND_X_MIN);
+    const bXMax = PreciseNumber.fromNumber(BOUND_X_MAX);
+    const bYMin = PreciseNumber.fromNumber(BOUND_Y_MIN);
+    const bYMax = PreciseNumber.fromNumber(BOUND_Y_MAX);
+    
+    const minCenterX = bXMin.add(zoomWidth.div(2));
+    const maxCenterX = bXMax.sub(zoomWidth.div(2));
+    const minCenterY = bYMin.add(zoomHeight.div(2));
+    const maxCenterY = bYMax.sub(zoomHeight.div(2));
 
-    // Panning check
-    // If fully zoomed out, minCenterX == maxCenterX (-0.5).
-    // If we drift, clamp back.
-    if (minCenterX > maxCenterX) {
-      centerX = (BOUND_X_MIN + BOUND_X_MAX) / 2;
+    if (minCenterX.gt(maxCenterX)) {
+      centerX = bXMin.add(bXMax).div(2);
     } else {
-      centerX = Math.max(minCenterX, Math.min(centerX, maxCenterX));
+      if (centerX.lt(minCenterX)) centerX = minCenterX;
+      if (centerX.gt(maxCenterX)) centerX = maxCenterX;
     }
 
-    if (minCenterY > maxCenterY) {
-      centerY = (BOUND_Y_MIN + BOUND_Y_MAX) / 2;
+    if (minCenterY.gt(maxCenterY)) {
+      centerY = bYMin.add(bYMax).div(2);
     } else {
-      centerY = Math.max(minCenterY, Math.min(centerY, maxCenterY));
+      if (centerY.lt(minCenterY)) centerY = minCenterY; 
+      if (centerY.gt(maxCenterY)) centerY = maxCenterY;
     }
   };
 
@@ -280,8 +465,8 @@ async function run() {
   let isDragging = false;
   let startX = 0;
   let startY = 0;
-  let dragStartComplexX = 0;
-  let dragStartComplexY = 0;
+  let dragStartComplexX = PreciseNumber.fromNumber(0);
+  let dragStartComplexY = PreciseNumber.fromNumber(0);
 
   wrapper.addEventListener('mousedown', (e) => {
     // Use Wrapper to capture events on any canvas
@@ -304,11 +489,20 @@ async function run() {
     const deltaX = currentX - startX;
     const deltaY = currentY - startY;
 
-    const mapPixelW = zoomWidth / logicalWidth; // logicalWidth is accurate to layout
-    const mapPixelH = (zoomWidth / FRACTAL_ASPECT) / logicalHeight;
+    // Map Pixel to Complex (delta)
+    // Here we can use Numbers because delta is small and related to screen pixels
+    const mapPixelW = zoomWidth.toNumber() / logicalWidth;
+    const mapPixelH = (zoomWidth.toNumber() / FRACTAL_ASPECT) / logicalHeight;
 
-    centerX = dragStartComplexX - deltaX * mapPixelW;
-    centerY = dragStartComplexY - deltaY * mapPixelH;
+    // Precise subtraction?
+    // Delta calc: 
+    // centerX = start - delta * scale
+    
+    const dX = PreciseNumber.fromNumber(deltaX * mapPixelW);
+    const dY = PreciseNumber.fromNumber(deltaY * mapPixelH);
+    
+    centerX = dragStartComplexX.sub(dX);
+    centerY = dragStartComplexY.sub(dY);
 
     applyConstraints(); // Clamp it
 
@@ -320,7 +514,7 @@ async function run() {
   wrapper.addEventListener('wheel', (e) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 0.9 : 1.1;
-    let newZoomWidth = zoomWidth * zoomFactor;
+    const newZoomWidth = zoomWidth.scale(zoomFactor);
 
     const rect = wrapper.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -329,12 +523,22 @@ async function run() {
     // UV Logic
     const uvX = mouseX / logicalWidth;
     const uvY = mouseY / logicalHeight;
-    const currentZoomHeight = zoomWidth / FRACTAL_ASPECT;
-    const newZoomHeight = newZoomWidth / FRACTAL_ASPECT;
+    
+    const currentZoomHeight = zoomWidth.div(FRACTAL_ASPECT);
+    const newZoomHeight = newZoomWidth.div(FRACTAL_ASPECT);
 
     // Offset
-    let nextCenterX = centerX + (uvX - 0.5) * (zoomWidth - newZoomWidth);
-    let nextCenterY = centerY + (uvY - 0.5) * (currentZoomHeight - newZoomHeight);
+    // nextCenterX = centerX + (uvX - 0.5) * (zoomWidth - newZoomWidth)
+    // Using Precise Math
+    
+    const diffW = zoomWidth.sub(newZoomWidth);
+    const diffH = currentZoomHeight.sub(newZoomHeight);
+    
+    const offX = diffW.mul(uvX - 0.5);
+    const offY = diffH.mul(uvY - 0.5);
+
+    const nextCenterX = centerX.add(offX);
+    const nextCenterY = centerY.add(offY);
 
     centerX = nextCenterX;
     centerY = nextCenterY;
