@@ -21,55 +21,52 @@ struct DS {
     lo: f32,
 };
 
+fn two_sum(a: f32, b: f32) -> vec2<f32> {
+    let s = a + b;
+    let v = s - a;
+    let err = (a - (s - v)) + (b - v);
+    return vec2<f32>(s, err);
+}
+
 fn ds_add(a: DS, b: DS) -> DS {
-    let t1 = a.hi + b.hi;
-    let e = t1 - a.hi;
-    let t2 = ((b.hi - e) + (a.hi - (t1 - e))) + a.lo + b.lo;
-    let hi = t1 + t2;
-    let lo = t2 - (hi - t1);
-    return DS(hi, lo);
+    let s = two_sum(a.hi, b.hi);
+    let err = s.y + a.lo + b.lo;
+    let res = two_sum(s.x, err);
+    return DS(res.x, res.y);
 }
 
 fn ds_sub(a: DS, b: DS) -> DS {
-    let t1 = a.hi - b.hi;
-    let e = t1 - a.hi;
-    let t2 = ((-b.hi - e) + (a.hi - (t1 - e))) + a.lo - b.lo;
-    let hi = t1 + t2;
-    let lo = t2 - (hi - t1);
-    return DS(hi, lo);
+    let s = two_sum(a.hi, -b.hi);
+    let err = s.y + a.lo - b.lo;
+    let res = two_sum(s.x, err);
+    return DS(res.x, res.y);
+}
+
+fn two_prod(a: f32, b: f32) -> vec2<f32> {
+    let p = a * b;
+    let C = 4097.0;
+    let t = a * C;
+    let a_hi = t - (t - a);
+    let a_lo = a - a_hi;
+    let t2 = b * C;
+    let b_hi = t2 - (t2 - b);
+    let b_lo = b - b_hi;
+    let err = ((a_hi * b_hi - p) + a_hi * b_lo + a_lo * b_hi) + a_lo * b_lo;
+    return vec2<f32>(p, err);
 }
 
 fn ds_mul(a: DS, b: DS) -> DS {
-    let C = 4097.0; // 2^12 + 1
-    let cone = a.hi * C;
-    let ctwo = b.hi * C;
-    let a_hi = cone - (cone - a.hi);
-    let a_lo = a.hi - a_hi;
-    let b_hi = ctwo - (ctwo - b.hi);
-    let b_lo = b.hi - b_hi;
-    
-    let t1 = a.hi * b.hi;
-    let t2 = (((a_hi * b_hi - t1) + a_hi * b_lo) + a_lo * b_hi);
-    let t3 = t2 + (a.hi * b.lo + a.lo * b.hi);
-    
-    let hi = t1 + t3;
-    let lo = t3 - (hi - t1);
-    return DS(hi, lo);
+    let p = two_prod(a.hi, b.hi);
+    let err = p.y + a.hi * b.lo + a.lo * b.hi;
+    let res = two_sum(p.x, err);
+    return DS(res.x, res.y);
 }
 
 fn ds_sqr(a: DS) -> DS {
-    let C = 4097.0; // 2^12 + 1
-    let cone = a.hi * C;
-    let a_hi = cone - (cone - a.hi);
-    let a_lo = a.hi - a_hi;
-    
-    let t1 = a.hi * a.hi;
-    let t2 = ((a_hi * a_hi - t1) + 2.0 * a_hi * a_lo);
-    let t3 = t2 + (2.0 * a.hi * a.lo);
-    
-    let hi = t1 + t3;
-    let lo = t3 - (hi - t1);
-    return DS(hi, lo);
+    let p = two_prod(a.hi, a.hi);
+    let err = p.y + 2.0 * a.hi * a.lo;
+    let res = two_sum(p.x, err);
+    return DS(res.x, res.y);
 }
 
 fn ds_mag_sq(a: DS) -> f32 {
@@ -85,7 +82,8 @@ fn iterate_f32(cx: f32, cy: f32, max_iter: u32) -> f32 {
     var zy2 = 0.0;
     var iter = 0u;
     
-    while (zx2 + zy2 < 4.0 && iter < max_iter) {
+    // Increased escape radius to 100.0 for smoother mu calculation at deep zooms
+    while (zx2 + zy2 < 100.0 && iter < max_iter) {
         zy = 2.0 * zx * zy + cy;
         zx = zx2 - zy2 + cx;
         zx2 = zx * zx;
@@ -97,15 +95,7 @@ fn iterate_f32(cx: f32, cy: f32, max_iter: u32) -> f32 {
     
     // Smooth coloring: mu = iter + 1 - log(log(|Z|))/log(2)
     let dist = zx2 + zy2;
-    // log2(x) = log(x)/log(2). 
-    // We want log2(log2(sqrt(dist))) = log2(0.5 * log2(dist)) = log2(0.5) + log2(log2(dist)) = -1 + ...
-    // Standard formula: mu = iter - log2(log2(|Z|)) + 4.0;
-    // But |Z| is usually typically > 2 (usually escape radius is higher, like 20, but 4 is min).
-    // Let's use the provided snippet logic:
-    // let log_zn = log2(zx2 + zy2) * 0.5;
-    // let nu = log2(log_zn / log2(2.0)); // log2(2.0) is 1.0.
-    
-    let log_z = log2(dist) * 0.5; // log2(|Z|)
+    let log_z = log2(dist) * 0.5;
     let nu = log2(log_z);
     
     let smooth_val = f32(iter) + 1.0 - nu;
@@ -117,14 +107,16 @@ fn iterate_ds(cx: DS, cy: DS, max_iter: u32) -> f32 {
     var zy = DS(0.0, 0.0);
     var iter = 0u;
     
-    // Use larger escape radius for better smooth smoothing at boundaries?
-    // 4.0 is standard.
-    while (ds_mag_sq(zx) + ds_mag_sq(zy) < 4.0 && iter < max_iter) {
+    while (ds_mag_sq(zx) + ds_mag_sq(zy) < 100.0 && iter < max_iter) {
         let zx2 = ds_sqr(zx);
         let zy2 = ds_sqr(zy);
-        let two_zx_zy = ds_mul(ds_mul(zx, zy), DS(2.0, 0.0));
         
+        // zy = 2.0 * zx * zy + cy
+        let zx_zy = ds_mul(zx, zy);
+        let two_zx_zy = DS(zx_zy.hi * 2.0, zx_zy.lo * 2.0);
         zy = ds_add(two_zx_zy, cy);
+        
+        // zx = zx2 - zy2 + cx
         zx = ds_add(ds_sub(zx2, zy2), cx);
         
         iter = iter + 1u;
@@ -132,7 +124,6 @@ fn iterate_ds(cx: DS, cy: DS, max_iter: u32) -> f32 {
     
     if (iter >= max_iter) { return 1.0; }
     
-    // For DS, we can use f32 estimate of magnitude for the smoothing log part
     let dist = ds_mag_sq(zx) + ds_mag_sq(zy);
     let log_z = log2(dist) * 0.5;
     let nu = log2(log_z);

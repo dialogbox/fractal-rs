@@ -94,4 +94,16 @@ export class PreciseNumber {
   gt(other: PreciseNumber): boolean {
     return this.value > other.value;
   }
+
+  split(): [number, number] {
+    const valF = Number(this.value) / 1e18;
+    const hi = Math.fround(valF);
+    // Re-calculate the exact hi part as a BigInt scaled by 1e18.
+    // We use a 10^9 * 10^9 approach to avoid floating point precision loss
+    // during the intermediate multiplication (10^9 < 2^53).
+    const hiBigScaled = BigInt(Math.round(hi * 1000000000)) * 1000000000n;
+    const loBig = this.value - hiBigScaled;
+    const lo = Number(loBig) / 1e18;
+    return [hi, lo];
+  }
 }
