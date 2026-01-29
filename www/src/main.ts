@@ -74,8 +74,18 @@ class PreciseNumber {
   }
   
   div(val: number): PreciseNumber { 
-       const div = BigInt(Math.round(val));
-       return new PreciseNumber(this.value / div);
+       // Fix: Handle floating point divisors by scaling
+       // We want result = (this / val)
+       // Representation: (value / scale) / val = (value / (val * scale)) * scale? No.
+       // We want R such that R/SCALE = (V/SCALE) / val
+       // R = V / val
+       // Since we do integer math: R = (V * MUL) / (val * MUL)
+       // Let's use MUL = 1e9 to capture fractional val
+       const mul = 1_000_000_000n;
+       const divScaled = BigInt(Math.round(val * 1_000_000_000)); // val * 1e9
+       if (divScaled === 0n) throw new Error("Division by zero");
+       
+       return new PreciseNumber((this.value * mul) / divScaled);
   }
   
   lt(other: PreciseNumber): boolean { return this.value < other.value; }
@@ -374,12 +384,16 @@ async function run() {
          if (details) details.style.display = "none";
     };
 
-
-    const zoomHeight = zoomWidth.div(FRACTAL_ASPECT);
+    // Aspect Ratio Calculation
+    // Ensure we don't divide by zero
+    const currentAspect = (width > 0 && height > 0) ? width / height : FRACTAL_ASPECT;
+    const zoomHeight = zoomWidth.div(currentAspect);
+    
     const xMin = centerX.sub(zoomWidth.div(2)).toNumber();
     const xMax = centerX.add(zoomWidth.div(2)).toNumber();
     const yMin = centerY.sub(zoomHeight.div(2)).toNumber();
     const yMax = centerY.add(zoomHeight.div(2)).toNumber();
+
 
     if (gpuRenderer) {
       if (gpuCanvas.width !== width) {
@@ -433,7 +447,9 @@ async function run() {
     if (zoomWidth.lt(MIN_ZOOM)) zoomWidth = MIN_ZOOM;
     if (zoomWidth.gt(MAX_ZOOM)) zoomWidth = MAX_ZOOM;
 
-    const zoomHeight = zoomWidth.div(FRACTAL_ASPECT);
+    // Use actual aspect ratio to prevent distortion
+    const currentAspect = width / height;
+    const zoomHeight = zoomWidth.div(currentAspect);
     
     // Bounds as PreciseNumber
     const bXMin = PreciseNumber.fromNumber(BOUND_X_MIN);
@@ -490,9 +506,22 @@ async function run() {
     const deltaY = currentY - startY;
 
     // Map Pixel to Complex (delta)
-    // Here we can use Numbers because delta is small and related to screen pixels
-    const mapPixelW = zoomWidth.toNumber() / logicalWidth;
-    const mapPixelH = (zoomWidth.toNumber() / FRACTAL_ASPECT) / logicalHeight;
+    // Use actual logical dimensions or physical ratio?
+    // Map pixel to complex scale based on CURRENT zoomWidth/Height and canvas size
+    // zoomWidth / logicalWidth is effectively zoomWidth / (width / dpr)
+    
+    const aspect = width / height;
+    const mapPixelW = zoomWidth.toNumber() / logicalWidth; 
+    // Heuristic: logicalWidth matches width/dpr. 
+    // But safely: 
+    // complex_per_pixel = zoomWidth / width (physical)
+    // delta is physical pixels? No, e.clientX is logical CSS pixels.
+    // So zoomWidth / logicalWidth is correct.
+    
+    // zoomHeight = zoomWidth / aspect.
+    // mapPixelH = zoomHeight / logicalHeight = (zoomWidth / aspect) / logicalHeight
+    
+    const mapPixelH = (zoomWidth.toNumber() / aspect) / logicalHeight;
 
     // Precise subtraction?
     // Delta calc: 
@@ -524,8 +553,9 @@ async function run() {
     const uvX = mouseX / logicalWidth;
     const uvY = mouseY / logicalHeight;
     
-    const currentZoomHeight = zoomWidth.div(FRACTAL_ASPECT);
-    const newZoomHeight = newZoomWidth.div(FRACTAL_ASPECT);
+    const currentAspect = width / height;
+    const currentZoomHeight = zoomWidth.div(currentAspect);
+    const newZoomHeight = newZoomWidth.div(currentAspect);
 
     // Offset
     // nextCenterX = centerX + (uvX - 0.5) * (zoomWidth - newZoomWidth)
