@@ -90,11 +90,22 @@ fn iterate_f32(cx: f32, cy: f32, max_iter: u32) -> f32 {
     }
     
     if (iter >= max_iter) { return 1.0; }
-    // Smooth coloring
+    
+    // Smooth coloring: mu = iter + 1 - log(log(|Z|))/log(2)
+    let dist = zx2 + zy2;
+    // log2(x) = log(x)/log(2). 
+    // We want log2(log2(sqrt(dist))) = log2(0.5 * log2(dist)) = log2(0.5) + log2(log2(dist)) = -1 + ...
+    // Standard formula: mu = iter - log2(log2(|Z|)) + 4.0;
+    // But |Z| is usually typically > 2 (usually escape radius is higher, like 20, but 4 is min).
+    // Let's use the provided snippet logic:
     // let log_zn = log2(zx2 + zy2) * 0.5;
-    // let nu = log2(log_zn / log2(2.0));
-    // let res = f32(iter) + 1.0 - nu;
-    return f32(iter) / f32(max_iter);
+    // let nu = log2(log_zn / log2(2.0)); // log2(2.0) is 1.0.
+    
+    let log_z = log2(dist) * 0.5; // log2(|Z|)
+    let nu = log2(log_z);
+    
+    let smooth_val = f32(iter) + 1.0 - nu;
+    return smooth_val / f32(max_iter);
 }
 
 fn iterate_ds(cx: DS, cy: DS, max_iter: u32) -> f32 {
@@ -102,6 +113,8 @@ fn iterate_ds(cx: DS, cy: DS, max_iter: u32) -> f32 {
     var zy = DS(0.0, 0.0);
     var iter = 0u;
     
+    // Use larger escape radius for better smooth smoothing at boundaries?
+    // 4.0 is standard.
     while (ds_mag_sq(zx) + ds_mag_sq(zy) < 4.0 && iter < max_iter) {
         let zx2 = ds_sqr(zx);
         let zy2 = ds_sqr(zy);
@@ -114,7 +127,31 @@ fn iterate_ds(cx: DS, cy: DS, max_iter: u32) -> f32 {
     }
     
     if (iter >= max_iter) { return 1.0; }
-    return f32(iter) / f32(max_iter);
+    
+    // For DS, we can use f32 estimate of magnitude for the smoothing log part
+    let dist = ds_mag_sq(zx) + ds_mag_sq(zy);
+    let log_z = log2(dist) * 0.5;
+    let nu = log2(log_z);
+    
+    let smooth_val = f32(iter) + 1.0 - nu;
+    return smooth_val / f32(max_iter);
+}
+
+fn getColor(t: f32) -> vec4<f32> {
+    if (t >= 1.0) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
+    
+    // Controlled brightness palette
+    // a = baseline, b = amplitude. 
+    // We limit (a + b) to ~0.7 and (a - b) to ~0.1 to avoid extreme spikes.
+    let a = vec3<f32>(0.35, 0.35, 0.4);
+    let b = vec3<f32>(0.25, 0.25, 0.3);
+    let c = vec3<f32>(1.0, 0.7, 0.4);
+    let d = vec3<f32>(0.0, 0.15, 0.20);
+    
+    let freq = 1.0;
+    let col = a + b * cos(6.28318 * (freq * t + d));
+    
+    return vec4<f32>(col, 1.0);
 }
 
 @compute @workgroup_size(8, 8)
@@ -134,54 +171,47 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
 
-    let center_x = f32(pixel_x) + 0.5;
-    let center_y = f32(pixel_y) + 0.5;
     let width_f = uniforms.width_hi;
     let height_f = uniforms.height_hi;
 
-    var val = 0.0;
+    // --- 4x Jittered Anti-Aliasing ---
+    // Instead of 1 sample at center, we take 4 samples in a rotated grid pattern
+    // (0.375, 0.125), (0.875, 0.375), (0.125, 0.625), (0.625, 0.875)
+    let jitter = array<vec2<f32>, 4>(
+        vec2<f32>(0.375, 0.125),
+        vec2<f32>(0.875, 0.375),
+        vec2<f32>(0.125, 0.625),
+        vec2<f32>(0.625, 0.875)
+    );
 
-    if (uniforms.precision_mode == 0u) {
-        // Fast f32 Path
-        let x_min = uniforms.x_min_hi;
-        let x_max = uniforms.x_max_hi;
-        let y_min = uniforms.y_min_hi;
-        let y_max = uniforms.y_max_hi;
-        
-        // Simple linear interpolation
-        let rx = center_x / width_f;
-        let ry = center_y / height_f;
-        
-        let cx = x_min + rx * (x_max - x_min);
-        let cy = y_min + ry * (y_max - y_min);
-        
-        val = iterate_f32(cx, cy, uniforms.max_iter);
+    var avg_color = vec4<f32>(0.0);
 
-    } else {
-        // High Precision DS Path
-        let x_min = DS(uniforms.x_min_hi, uniforms.x_min_lo);
-        let x_max = DS(uniforms.x_max_hi, uniforms.x_max_lo);
-        let y_min = DS(uniforms.y_min_hi, uniforms.y_min_lo);
-        let y_max = DS(uniforms.y_max_hi, uniforms.y_max_lo);
+    for (var s = 0u; s < 4u; s = s + 1u) {
+        let sample_x = f32(pixel_x) + jitter[s].x;
+        let sample_y = f32(pixel_y) + jitter[s].y;
         
-        // Range
-        let x_range = ds_sub(x_max, x_min);
-        let y_range = ds_sub(y_max, y_min);
-        
-        // Ratios (f32 is enough for screen coordinates)
-        let rx = DS(center_x / width_f, 0.0);
-        let ry = DS(center_y / height_f, 0.0);
-        
-        // Interpolate
-        let cx = ds_add(x_min, ds_mul(rx, x_range));
-        let cy = ds_add(y_min, ds_mul(ry, y_range));
-
-        val = iterate_ds(cx, cy, uniforms.max_iter);
+        var val = 0.0;
+        if (uniforms.precision_mode == 0u) {
+            let rx = sample_x / width_f;
+            let ry = sample_y / height_f;
+            let cx = uniforms.x_min_hi + rx * (uniforms.x_max_hi - uniforms.x_min_hi);
+            let cy = uniforms.y_min_hi + ry * (uniforms.y_max_hi - uniforms.y_min_hi);
+            val = iterate_f32(cx, cy, uniforms.max_iter);
+        } else {
+            let x_min = DS(uniforms.x_min_hi, uniforms.x_min_lo);
+            let x_max = DS(uniforms.x_max_hi, uniforms.x_max_lo);
+            let y_min = DS(uniforms.y_min_hi, uniforms.y_min_lo);
+            let y_max = DS(uniforms.y_max_hi, uniforms.y_max_lo);
+            let rx = DS(sample_x / width_f, 0.0);
+            let ry = DS(sample_y / height_f, 0.0);
+            let cx = ds_add(x_min, ds_mul(rx, ds_sub(x_max, x_min)));
+            let cy = ds_add(y_min, ds_mul(ry, ds_sub(y_max, y_min)));
+            val = iterate_ds(cx, cy, uniforms.max_iter);
+        }
+        avg_color = avg_color + getColor(val);
     }
     
-    // Output color
-    var color = vec4<f32>(val, val, val, 1.0);
-    if (val >= 1.0) { color = vec4<f32>(0.0, 0.0, 0.0, 1.0); }
+    let color = avg_color / 4.0;
     
     // Splat
     for (var dy = 0u; dy < step; dy = dy + 1u) {
