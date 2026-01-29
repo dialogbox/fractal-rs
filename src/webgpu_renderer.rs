@@ -11,8 +11,8 @@ struct Uniforms {
     y_min_hi: f32, y_min_lo: f32, y_max_hi: f32, y_max_lo: f32,
     max_iter: u32,
     precision_mode: u32,
-    padding1: u32,
-    padding2: u32,
+    step_size: u32,
+    flags: u32,
 }
 
 #[wasm_bindgen]
@@ -111,8 +111,8 @@ impl GpuRenderer {
              y_max_hi: 1.0, y_max_lo: 0.0,
              max_iter: 100,
              precision_mode: 0,
-             padding1: 0,
-             padding2: 0,
+             step_size: 1,
+             flags: 0,
         };
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -302,8 +302,8 @@ impl GpuRenderer {
         self.surface.configure(&self.device, &self.config);
     }
     
-    pub fn render(&self, x_min: f64, x_max: f64, y_min: f64, y_max: f64, max_iter: u32) {
-        console::log_1(&format!("Rust: Rendering with size {}x{}", self.width, self.height).into());
+    pub fn render(&self, x_min: f64, x_max: f64, y_min: f64, y_max: f64, max_iter: u32, step: u32, reuse: bool) {
+        console::log_1(&format!("Rust: Rendering with size {}x{}, step {}", self.width, self.height, step).into());
 
         fn split(v: f64) -> (f32, f32) {
             let hi = v as f32;
@@ -329,11 +329,17 @@ impl GpuRenderer {
              y_min_hi, y_min_lo, y_max_hi, y_max_lo,
              max_iter,
              precision_mode,
-             padding1: 0,
-             padding2: 0,
+             step_size: step,
+             flags: if reuse { 1 } else { 0 },
         };
         
         self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+        
+        // Dispatch Logic: One thread per 'macro-pixel' of size 'step'.
+        // Grid size: width / step.
+        // We round UP.
+        let grid_w = (self.width + step - 1) / step;
+        let grid_h = (self.height + step - 1) / step;
         
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         
@@ -342,7 +348,7 @@ impl GpuRenderer {
             cpass.set_pipeline(&self.compute_pipeline);
             cpass.set_bind_group(0, &self.compute_bind_group, &[]);
             let workgroup_size = 8;
-            cpass.dispatch_workgroups((self.width + workgroup_size - 1) / workgroup_size, (self.height + workgroup_size - 1) / workgroup_size, 1);
+            cpass.dispatch_workgroups((grid_w + workgroup_size - 1) / workgroup_size, (grid_h + workgroup_size - 1) / workgroup_size, 1);
         }
         
         let frame = match self.surface.get_current_texture() {

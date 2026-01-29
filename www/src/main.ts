@@ -1,14 +1,17 @@
-import init, { FractalRenderer, GpuRenderer, setup } from '../../pkg/fractal_rs';
+import init, { GpuRenderer, setup } from '../../pkg/fractal_rs';
 
 async function run() {
   console.log("Starting App...");
-  const wasm = await init();
+  await init();
   setup();
   console.log("Wasm initialized");
 
   const canvas = document.getElementById('mandelbrot-canvas') as HTMLCanvasElement;
-  canvas.style.display = 'block';
-  canvas.style.zIndex = '1';
+  // Use 'canvas' as the main GPU canvas or just remove it and use gpuCanvas?
+  // User removed CPU. Let's just use the 'gpuCanvas' we created or repurpose 'canvas'?
+  // Existing code creates 'gpuCanvas'. Let's stick to that but maybe attach it better.
+  // Actually, 'canvas' was the original from HTML. 'gpuCanvas' was dynamic.
+  // Let's hide the original canvas or remove it.
 
   // UI Controls
   const controls = document.createElement('div');
@@ -21,21 +24,6 @@ async function run() {
   controls.style.borderRadius = '5px';
   controls.style.zIndex = '100'; // Topmost
   document.body.appendChild(controls);
-
-  const modeLabel = document.createElement('div');
-  modeLabel.innerText = "Mode: ";
-  controls.appendChild(modeLabel);
-
-  const cpuBtn = document.createElement('button');
-  cpuBtn.innerText = "CPU (Wasm)";
-  cpuBtn.onclick = () => switchMode('cpu');
-  controls.appendChild(cpuBtn);
-
-  const gpuBtn = document.createElement('button');
-  gpuBtn.innerText = "GPU (WebGPU)";
-  gpuBtn.style.marginLeft = '10px';
-  gpuBtn.onclick = () => switchMode('gpu');
-  controls.appendChild(gpuBtn);
 
   const infoDiv = document.createElement('div');
   infoDiv.style.marginTop = '5px';
@@ -62,35 +50,8 @@ async function run() {
   let zoomWidth = 3.0; // Starts showing full width
 
   // --- PERSISTENCE & STYLING ---
-  const savedMode = localStorage.getItem('fractalMode');
-  let mode: 'cpu' | 'gpu' = (savedMode === 'gpu') ? 'gpu' : 'cpu';
 
-  const updateButtonStyles = () => {
-    if (mode === 'cpu') {
-      cpuBtn.style.background = '#4CAF50';
-      cpuBtn.style.color = 'white';
-      gpuBtn.style.background = '#555';
-      gpuBtn.style.color = '#ccc';
-    } else {
-      cpuBtn.style.background = '#555';
-      cpuBtn.style.color = '#ccc';
-      gpuBtn.style.background = '#4CAF50';
-      gpuBtn.style.color = 'white';
-    }
-  };
-  updateButtonStyles();
-
-  let cpuRenderer: FractalRenderer | null = null;
   let gpuRenderer: GpuRenderer | null = null;
-  let ctx: CanvasRenderingContext2D | null = null;
-
-  // Init CPU
-  try {
-    ctx = canvas.getContext('2d', { willReadFrequently: true });
-    // Note: We delay .new() until we know the size in updateLayout()
-  } catch (e) {
-    console.error("CPU Init Error", e);
-  }
 
   // Dual Canvas Setup
   const gpuCanvas = document.createElement('canvas');
@@ -109,7 +70,7 @@ async function run() {
   // Actually, easiest way with existing DOM:
   // Canvases are absolute, but centered?
   // Let's make a wrapper logic inside updateLayout.
-  // NO. `canvas { position: absolute; }` inside a flex container centers them if we use margin:auto? No.
+  // NO. `canvas { position: absolute; } ` inside a flex container centers them if we use margin:auto? No.
 
   // Let's inject a Wrapper.
   const wrapper = document.createElement('div');
@@ -193,14 +154,6 @@ async function run() {
     }
 
     // Initialize or Resize Renderers
-    if (!cpuRenderer) {
-      try {
-        cpuRenderer = FractalRenderer.new(width, height);
-      } catch (e) { }
-    } else {
-      cpuRenderer.resize(width, height);
-    }
-
     if (!gpuRenderer) {
       // Async init handled later/below
       // but if it exists:
@@ -218,98 +171,73 @@ async function run() {
       gpuRenderer = r;
       gpuRenderer.resize(width, height); // Initial size
       console.log("GPU Ready");
-      gpuBtn.title = "Ready";
-      if (mode === 'gpu') startRender();
+      infoDiv.innerText = "GPU Ready";
+      startRender();
     }).catch(e => {
       console.error("GPU Fail", e);
-      gpuBtn.disabled = true;
+      infoDiv.innerText = "GPU Failed to initialize";
     });
   } catch (e) { }
 
   // --- RENDERING VARS ---
-  // ... (Same as before)
   let pendingRenderId = 0;
-  const passScales = [0.125, 0.25, 0.5, 1.0];
 
-  const renderPass = (passIndex: number, renderId: number) => {
+  // Progressive Rendering State
+  const renderPass = (step: number, renderId: number) => {
     if (renderId !== pendingRenderId) return;
-    const scale = passScales[passIndex];
-    const scaledWidth = Math.floor(width * scale);
-    const scaledHeight = Math.floor(height * scale);
 
     // Info
     const zoomLevel = Math.log10(3.0 / zoomWidth);
     const maxIter = Math.floor(100 + zoomLevel * 100);
-    infoDiv.innerText = `Zoom: ${zoomWidth.toExponential(2)} | Iters: ${maxIter} | Res: ${(scale * 100).toFixed(1)}%`;
+    const resPercent = (100.0 / step).toFixed(1);
+    infoDiv.innerText = `Zoom: ${zoomWidth.toExponential(2)} | Iters: ${maxIter} | Res: ${resPercent}% (Step ${step})`;
 
-    const aspectRatio = width / height; // Should strictly match FRACTAL_ASPECT
-    // const zoomHeight = zoomWidth / aspectRatio; // Derived
     const zoomHeight = zoomWidth / FRACTAL_ASPECT;
-
     const xMin = centerX - zoomWidth / 2;
     const xMax = centerX + zoomWidth / 2;
     const yMin = centerY - zoomHeight / 2;
     const yMax = centerY + zoomHeight / 2;
 
-    if (mode === 'cpu' && cpuRenderer && ctx) {
-      // Helper to handle partial updates? No, just full resize usually.
-      // But for progressive, we use smaller buffers.
-      if (canvas.width !== scaledWidth) {
-        canvas.width = scaledWidth;
-        canvas.height = scaledHeight;
+    if (gpuRenderer) {
+      if (gpuCanvas.width !== width) {
+        gpuCanvas.width = width;
+        gpuCanvas.height = height;
       }
-      cpuRenderer.resize(scaledWidth, scaledHeight);
-      cpuRenderer.render(xMin, xMax, yMin, yMax, maxIter);
+      // Resize is handled once? Or always?
+      // Let's ensure renderer is resized to logical dims
+      // gpuRenderer.resize(width, height); // This destroys texture!
+      // We only resize if dimensions change or initially.
+      // Handled in updateLayout.
+      // Progressive pass just calls render.
 
-      const pixelsPtr = cpuRenderer.get_pixels();
-      const pixelsLen = cpuRenderer.get_pixels_len();
-      const memory = wasm.memory;
-      const pixels = new Uint8ClampedArray(memory.buffer, pixelsPtr, pixelsLen);
-      const imageData = new ImageData(pixels, scaledWidth, scaledHeight);
-      ctx.putImageData(imageData, 0, 0);
+      let startStep = Math.floor(Math.min(width, height) / 2);
+      startStep = Math.min(startStep, 64);
+      startStep = Math.pow(2, Math.floor(Math.log2(startStep)));
+      if (startStep < 1) startStep = 1;
 
-      // Restore full size for layout if last pass? 
-      // Actually canvas.width controls display res. This works fine essentially upscaling via CSS.
+      const reuse = (step < startStep);
 
-    } else if (mode === 'gpu' && gpuRenderer) {
-      if (gpuCanvas.width !== scaledWidth) {
-        gpuCanvas.width = scaledWidth;
-        gpuCanvas.height = scaledHeight;
-      }
-      gpuRenderer.resize(scaledWidth, scaledHeight);
-      gpuRenderer.render(xMin, xMax, yMin, yMax, maxIter);
+      gpuRenderer.render(xMin, xMax, yMin, yMax, maxIter, step, reuse);
     }
 
-    if (passIndex < passScales.length - 1) {
-      requestAnimationFrame(() => renderPass(passIndex + 1, renderId));
+    if (step > 1) {
+      let nextStep = Math.floor(step / 2);
+      if (nextStep < 1) nextStep = 1;
+      requestAnimationFrame(() => renderPass(nextStep, renderId));
     }
   };
 
   const startRender = () => {
     pendingRenderId++;
     const myId = pendingRenderId;
-    requestAnimationFrame(() => renderPass(0, myId));
-  };
+    let startStep = Math.floor(Math.min(width, height) / 2);
+    // Cap start step to avoided massive splats (TDR)
+    startStep = Math.min(startStep, 64);
 
-  const switchMode = (newMode: 'cpu' | 'gpu') => {
-    if (newMode === mode) return;
-    mode = newMode;
-    localStorage.setItem('fractalMode', newMode);
-    updateButtonStyles();
+    startStep = Math.pow(2, Math.floor(Math.log2(startStep)));
+    if (startStep < 1) startStep = 1;
 
-    // Visibility handled by CSS classes or explicit style?
-    // Wrapper uses Grid. We need to toggle 'display' or z-index.
-    // Display none removes it from layout? No, Grid stack.
-    if (mode === 'cpu') {
-      canvas.style.display = 'block';
-      gpuCanvas.style.display = 'none'; // safe
-      infoDiv.innerText = "Switched to CPU";
-    } else {
-      canvas.style.display = 'none';
-      gpuCanvas.style.display = 'block';
-      infoDiv.innerText = "Switched to GPU";
-    }
-    startRender();
+    requestAnimationFrame(() => renderPass(startStep, myId));
   };
 
   // --- CONSTRAINTS ---
