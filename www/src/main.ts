@@ -50,6 +50,19 @@ async function run() {
   let centerY = PreciseNumber.fromNumber(0.0);
   let zoomWidth = PreciseNumber.fromNumber(3.0);
 
+  // Appearance State
+  let color1 = '#9cacba';
+  let color2 = '#1049ac';
+  let brightMin = 0.0;
+  let brightMax = 0.8;
+
+  const hexToRgb = (hex: string) => {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    return [r, g, b];
+  };
+
   // URL Params Initialization
   const params = new URLSearchParams(window.location.search);
   const pX = params.get('x');
@@ -121,6 +134,59 @@ async function run() {
 
   btnContainer.appendChild(btnCopyCoords);
   btnContainer.appendChild(btnCopyUrl);
+
+  // --- APPEARANCE UI ---
+  const appearanceDiv = document.createElement('div');
+  appearanceDiv.style.marginTop = '15px';
+  appearanceDiv.style.display = 'flex';
+  appearanceDiv.style.flexDirection = 'column';
+  appearanceDiv.style.gap = '10px';
+  appearanceDiv.style.borderTop = '1px solid rgba(255,255,255,0.2)';
+  appearanceDiv.style.paddingTop = '10px';
+  controls.appendChild(appearanceDiv);
+
+  const createControl = (label: string, input: HTMLElement) => {
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.justifyContent = 'space-between';
+    row.style.alignItems = 'center';
+    row.style.fontSize = '0.9em';
+    const l = document.createElement('label');
+    l.innerText = label;
+    row.appendChild(l);
+    row.appendChild(input);
+    appearanceDiv.appendChild(row);
+  };
+
+  const cp1 = document.createElement('input');
+  cp1.type = 'color';
+  cp1.value = color1;
+  cp1.oninput = () => { color1 = cp1.value; startRender(); };
+  createControl('Color 1', cp1);
+
+  const cp2 = document.createElement('input');
+  cp2.type = 'color';
+  cp2.value = color2;
+  cp2.oninput = () => { color2 = cp2.value; startRender(); };
+  createControl('Color 2', cp2);
+
+  const sMin = document.createElement('input');
+  sMin.type = 'range';
+  sMin.min = '0';
+  sMin.max = '1';
+  sMin.step = '0.01';
+  sMin.value = brightMin.toString();
+  sMin.oninput = () => { brightMin = parseFloat(sMin.value); startRender(); };
+  createControl('Min Bright', sMin);
+
+  const sMax = document.createElement('input');
+  sMax.type = 'range';
+  sMax.min = '0';
+  sMax.max = '1';
+  sMax.step = '0.01';
+  sMax.value = brightMax.toString();
+  sMax.oninput = () => { brightMax = parseFloat(sMax.value); startRender(); };
+  createControl('Max Bright', sMax);
 
   // Copy Logic
   const copyToClipboard = async (text: string) => {
@@ -335,7 +401,16 @@ async function run() {
 
       const reuse = step < startStep;
 
-      const params = new RenderParams(xMin, xMax, yMin, yMax, maxIter, step, reuse);
+      const [c1r, c1g, c1b] = hexToRgb(color1);
+      const [c2r, c2g, c2b] = hexToRgb(color2);
+
+      const params = new RenderParams(
+        xMin, xMax, yMin, yMax, 
+        maxIter, step, reuse,
+        c1r, c1g, c1b,
+        c2r, c2g, c2b,
+        brightMin, brightMax
+      );
       gpuRenderer.render(params);
     }
 

@@ -6,6 +6,10 @@ struct Uniforms {
     precision_mode: u32,
     step_size: u32,
     flags: u32,
+    color1: vec4<f32>,
+    color2: vec4<f32>,
+    bright_min: f32,
+    bright_max: f32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -140,18 +144,18 @@ fn iterate_ds(cx: DS, cy: DS, max_iter: u32) -> f32 {
 fn getColor(t: f32) -> vec4<f32> {
     if (t >= 1.0) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
     
-    // Controlled brightness palette
-    // a = baseline, b = amplitude. 
-    // We limit (a + b) to ~0.7 and (a - b) to ~0.1 to avoid extreme spikes.
-    let a = vec3<f32>(0.35, 0.35, 0.4);
-    let b = vec3<f32>(0.25, 0.25, 0.3);
-    let c = vec3<f32>(1.0, 0.7, 0.4);
-    let d = vec3<f32>(0.0, 0.15, 0.20);
-    
+    // Smooth cyclic palette between color1 and color2
+    // Interpolate based on cosine wave for smoothness
     let freq = 1.0;
-    let col = a + b * cos(6.28318 * (freq * t + d));
+    let cos_val = cos(6.28318 * freq * t) * 0.5 + 0.5;
     
-    return vec4<f32>(col, 1.0);
+    let base_col = mix(uniforms.color1.rgb, uniforms.color2.rgb, cos_val);
+    
+    // Apply brightness/darkness scaling
+    // We want the final brightness to be between bright_min and bright_max
+    let final_col = uniforms.bright_min + base_col * (uniforms.bright_max - uniforms.bright_min);
+    
+    return vec4<f32>(final_col, 1.0);
 }
 
 @compute @workgroup_size(8, 8)

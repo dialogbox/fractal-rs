@@ -14,13 +14,28 @@ pub struct RenderParams {
     pub max_iter: u32,
     pub step: u32,
     pub reuse: bool,
+    pub color1_r: f32, pub color1_g: f32, pub color1_b: f32,
+    pub color2_r: f32, pub color2_g: f32, pub color2_b: f32,
+    pub bright_min: f32,
+    pub bright_max: f32,
 }
 
 #[wasm_bindgen]
 impl RenderParams {
     #[wasm_bindgen(constructor)]
-    pub fn new(x_min: f64, x_max: f64, y_min: f64, y_max: f64, max_iter: u32, step: u32, reuse: bool) -> RenderParams {
-        RenderParams { x_min, x_max, y_min, y_max, max_iter, step, reuse }
+    pub fn new(
+        x_min: f64, x_max: f64, y_min: f64, y_max: f64, 
+        max_iter: u32, step: u32, reuse: bool,
+        color1_r: f32, color1_g: f32, color1_b: f32,
+        color2_r: f32, color2_g: f32, color2_b: f32,
+        bright_min: f32, bright_max: f32
+    ) -> RenderParams {
+        RenderParams { 
+            x_min, x_max, y_min, y_max, max_iter, step, reuse,
+            color1_r, color1_g, color1_b,
+            color2_r, color2_g, color2_b,
+            bright_min, bright_max
+        }
     }
 }
 
@@ -34,6 +49,11 @@ struct Uniforms {
     precision_mode: u32,
     step_size: u32,
     flags: u32,
+    color1: [f32; 4],
+    color2: [f32; 4],
+    bright_min: f32,
+    bright_max: f32,
+    _pad: [f32; 2],
 }
 
 fn split_f64(v: f64) -> (f32, f32) {
@@ -140,7 +160,12 @@ impl GpuRenderer {
              precision_mode: 0,
              step_size: 1,
              flags: 0,
-        };
+             color1: [0.6118, 0.6745, 0.7294, 1.0], // #9cacba
+             color2: [0.0627, 0.2863, 0.6745, 1.0], // #1049ac
+             bright_min: 0.0,
+             bright_max: 0.8,
+             _pad: [0.0, 0.0],
+         };
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
@@ -352,6 +377,11 @@ impl GpuRenderer {
              precision_mode,
              step_size: p.step,
              flags: if p.reuse { 1 } else { 0 },
+             color1: [p.color1_r, p.color1_g, p.color1_b, 1.0],
+             color2: [p.color2_r, p.color2_g, p.color2_b, 1.0],
+             bright_min: p.bright_min,
+             bright_max: p.bright_max,
+             _pad: [0.0, 0.0],
         };
         
         self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));

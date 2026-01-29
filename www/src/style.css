@@ -94,3 +94,31 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+input[type='color'] {
+  border: none;
+  width: 30px;
+  height: 20px;
+  cursor: pointer;
+  background: transparent;
+}
+
+input[type='range'] {
+  width: 80px;
+  cursor: pointer;
+}
+
+#coords-detail {
+  font-family: monospace;
+}
+
+button {
+  background: #333;
+  color: white;
+  border: 1px solid #555;
+  border-radius: 4px;
+}
+
+button:hover {
+  background: #444;
+  border-color: #777;
+}
