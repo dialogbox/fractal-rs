@@ -1,7 +1,28 @@
+#[cfg(target_arch = "wasm32")]
 use wgpu::util::DeviceExt;
 use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use std::borrow::Cow;
 use crate::console;
+
+#[wasm_bindgen]
+pub struct RenderParams {
+    pub x_min: f64,
+    pub x_max: f64,
+    pub y_min: f64,
+    pub y_max: f64,
+    pub max_iter: u32,
+    pub step: u32,
+    pub reuse: bool,
+}
+
+#[wasm_bindgen]
+impl RenderParams {
+    #[wasm_bindgen(constructor)]
+    pub fn new(x_min: f64, x_max: f64, y_min: f64, y_max: f64, max_iter: u32, step: u32, reuse: bool) -> RenderParams {
+        RenderParams { x_min, x_max, y_min, y_max, max_iter, step, reuse }
+    }
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -13,6 +34,12 @@ struct Uniforms {
     precision_mode: u32,
     step_size: u32,
     flags: u32,
+}
+
+fn split_f64(v: f64) -> (f32, f32) {
+    let hi = v as f32;
+    let lo = (v - hi as f64) as f32;
+    (hi, lo)
 }
 
 #[wasm_bindgen]
@@ -302,23 +329,17 @@ impl GpuRenderer {
         self.surface.configure(&self.device, &self.config);
     }
     
-    pub fn render(&self, x_min: f64, x_max: f64, y_min: f64, y_max: f64, max_iter: u32, step: u32, reuse: bool) {
-        console::log_1(&format!("Rust: Rendering with size {}x{}, step {}", self.width, self.height, step).into());
+    pub fn render(&self, p: RenderParams) {
+        console::log_1(&format!("Rust: Rendering with size {}x{}, step {}", self.width, self.height, p.step).into());
 
-        fn split(v: f64) -> (f32, f32) {
-            let hi = v as f32;
-            let lo = (v - hi as f64) as f32;
-            (hi, lo)
-        }
+        let (w_hi, w_lo) = split_f64(self.width as f64);
+        let (h_hi, h_lo) = split_f64(self.height as f64);
+        let (x_min_hi, x_min_lo) = split_f64(p.x_min);
+        let (x_max_hi, x_max_lo) = split_f64(p.x_max);
+        let (y_min_hi, y_min_lo) = split_f64(p.y_min);
+        let (y_max_hi, y_max_lo) = split_f64(p.y_max);
 
-        let (w_hi, w_lo) = split(self.width as f64);
-        let (h_hi, h_lo) = split(self.height as f64);
-        let (x_min_hi, x_min_lo) = split(x_min);
-        let (x_max_hi, x_max_lo) = split(x_max);
-        let (y_min_hi, y_min_lo) = split(y_min);
-        let (y_max_hi, y_max_lo) = split(y_max);
-
-        let zoom_width = x_max - x_min;
+        let zoom_width = p.x_max - p.x_min;
         let precision_mode = if zoom_width < 1e-4 { 1 } else { 0 };
 
         console::log_1(&format!("Rust: Precision Mode: {} (Zoom: {:e})", precision_mode, zoom_width).into());
@@ -327,28 +348,28 @@ impl GpuRenderer {
              width_hi: w_hi, width_lo: w_lo, height_hi: h_hi, height_lo: h_lo,
              x_min_hi, x_min_lo, x_max_hi, x_max_lo,
              y_min_hi, y_min_lo, y_max_hi, y_max_lo,
-             max_iter,
+             max_iter: p.max_iter,
              precision_mode,
-             step_size: step,
-             flags: if reuse { 1 } else { 0 },
+             step_size: p.step,
+             flags: if p.reuse { 1 } else { 0 },
         };
         
         self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
         
         // Dispatch Logic: One thread per 'macro-pixel' of size 'step'.
         // Grid size: width / step.
-        // We round UP.
-        let grid_w = (self.width + step - 1) / step;
-        let grid_h = (self.height + step - 1) / step;
+        let grid_w = self.width.div_ceil(p.step);
+        let grid_h = self.height.div_ceil(p.step);
         
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         
+        // Compute Pass
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None, timestamp_writes: None });
             cpass.set_pipeline(&self.compute_pipeline);
             cpass.set_bind_group(0, &self.compute_bind_group, &[]);
             let workgroup_size = 8;
-            cpass.dispatch_workgroups((grid_w + workgroup_size - 1) / workgroup_size, (grid_h + workgroup_size - 1) / workgroup_size, 1);
+            cpass.dispatch_workgroups(grid_w.div_ceil(workgroup_size), grid_h.div_ceil(workgroup_size), 1);
         }
         
         let frame = match self.surface.get_current_texture() {
@@ -360,6 +381,7 @@ impl GpuRenderer {
         };
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+        // Render Pass (Blit to screen)
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Blit Pass"),
@@ -450,5 +472,22 @@ impl GpuRenderer {
         } else {
              Ok(result)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_split_f64() {
+        let (hi, lo) = split_f64(1.0);
+        assert_eq!(hi, 1.0);
+        assert_eq!(lo, 0.0);
+
+        let val = 1.23456789e5;
+        let (hi, lo) = split_f64(val);
+        assert_eq!(hi, 123456.79); // Approximate float
+        assert!((val - (hi as f64 + lo as f64)).abs() < 1e-10);
     }
 }

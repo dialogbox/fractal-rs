@@ -1,8 +1,6 @@
-
 use wgpu;
 use futures;
 use bytemuck;
-
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -22,12 +20,12 @@ fn split(v: f64) -> (f32, f32) {
     (hi, lo)
 }
 
-fn main() {
-    futures::executor::block_on(run());
+#[test]
+fn test_wgsl_compute() {
+    futures::executor::block_on(run_test());
 }
 
-async fn run() {
-    println!("Step 1: finding adapter...");
+async fn run_test() {
     let instance = wgpu::Instance::default();
     let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
@@ -35,10 +33,6 @@ async fn run() {
         compatible_surface: None,
     }).await.expect("Failed to find an appropriate adapter");
 
-    let info = adapter.get_info();
-    println!("Using adapter: {:?} ({:?})", info.name, info.backend);
-
-    println!("Step 2: Requesting Device...");
     let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
         label: None,
         required_features: wgpu::Features::empty(),
@@ -46,8 +40,7 @@ async fn run() {
         memory_hints: Default::default(),
     }, None).await.expect("Failed to create device");
 
-    println!("Step 3: Loading Shader...");
-    // We assume the shader is in ../src/shader.wgsl relative to this example
+    // Path relative to `tests/`
     let shader_source = include_str!("../src/shader.wgsl");
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Compute Shader"),
@@ -58,8 +51,6 @@ async fn run() {
     let height = 64u32;
     let texture_size = wgpu::Extent3d { width, height, depth_or_array_layers: 1 };
 
-    println!("Step 4: Creating Resources...");
-    // Texture
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Output Texture"),
         size: texture_size,
@@ -67,14 +58,14 @@ async fn run() {
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: wgpu::TextureFormat::Rgba8Unorm,
-        usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::TEXTURE_BINDING, // COPY_SRC is CRITICAL
+        usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     });
     let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-    // Uniforms
     let (w_hi, w_lo) = split(width as f64);
     let (h_hi, h_lo) = split(height as f64);
+    // Standard Mandelbrot view
     let (x_min_hi, x_min_lo) = split(-2.0);
     let (x_max_hi, x_max_lo) = split(1.0);
     let (y_min_hi, y_min_lo) = split(-1.5);
@@ -89,24 +80,23 @@ async fn run() {
         step_size: 1,
         flags: 0,
     };
+    
+    // We need to use `device.create_buffer_init` which requires `wgpu::util::DeviceExt`
+    use wgpu::util::DeviceExt;
+    
     let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Uniform Buffer"),
         contents: bytemuck::cast_slice(&[uniforms]),
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     });
 
-    // ---------------------------------------------------------
-    // Split into Two Bind Groups to avoid usage conflict
-    // ---------------------------------------------------------
-
-    // 1. Compute Bind Group (Uniforms + Storage)
     let compute_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("Compute Layout"),
         entries: &[
             wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::COMPUTE,
-                 ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
                 count: None,
             },
             wgpu::BindGroupLayoutEntry {
@@ -127,13 +117,9 @@ async fn run() {
         ],
     });
 
-    // 2. Render Bind Group (Not used in this test, but conceptually separate)
-    // We only need Compute for the headless test.
-
-    // Pipeline Layout verifying COMPUTE ONLY
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Pipeline Layout"),
-        bind_group_layouts: &[&compute_bind_group_layout], // Only Compute Layout
+        bind_group_layouts: &[&compute_bind_group_layout],
         push_constant_ranges: &[],
     });
 
@@ -146,16 +132,14 @@ async fn run() {
         cache: None,
     });
 
-    println!("Step 5: Dispatching...");
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     {
         let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
         cpass.set_pipeline(&compute_pipeline);
-        cpass.set_bind_group(0, &compute_bind_group, &[]); // Bind dedicated group
+        cpass.set_bind_group(0, &compute_bind_group, &[]);
         cpass.dispatch_workgroups(width / 8, height / 8, 1);
     }
     
-    // Copy to Staging
     let unpadded_bytes_per_row = width * 4;
     let align = 256;
     let padding = (align - unpadded_bytes_per_row % align) % align;
@@ -189,7 +173,6 @@ async fn run() {
     
     queue.submit(Some(encoder.finish()));
 
-    println!("Step 6: Reading back...");
     let slice = staging_buffer.slice(..);
     let (tx, rx) = futures::channel::oneshot::channel();
     slice.map_async(wgpu::MapMode::Read, move |v| tx.send(v).unwrap());
@@ -199,24 +182,12 @@ async fn run() {
     let data = slice.get_mapped_range();
     let vec_data = data.to_vec();
     
-    println!("Data size: {}", vec_data.len());
-    
-    // Check first pixel
-    let r = vec_data[0];
-    let g = vec_data[1];
-    let b = vec_data[2];
-    let a = vec_data[3];
-    
-    println!("Pixel[0]: R={}, G={}, B={}, A={}", r, g, b, a);
-    
-    // Check if we have NON-Black pixels
+    // Validate output
+    // Mandelbrot set center should satisfy some properties or just not be empty
     let non_zero = vec_data.iter().filter(|&&x| x > 0).count();
-    println!("Non-zero bytes: {}", non_zero);
     
-    if non_zero > 0 {
-        println!("TEST PASSED: Output detected.");
-    } else {
-        println!("TEST FAILED: All black.");
-    }
+    // Assert we have some data
+    assert!(non_zero > 0, "Shader produced all black output");
+    
+    // Optional: Check specific known points if possible, but for now just general validity
 }
-use wgpu::util::DeviceExt; // Import for create_buffer_init

@@ -1,102 +1,11 @@
-import init, { GpuRenderer, setup } from '../../pkg/fractal_rs';
-
-// --- PRECISION MATH ---
-class PreciseNumber {
-  private value: bigint;
-  private static SCALE = 1_000_000_000_000_000_000n; // 18 decimals
-  private static SCALE_F = 1e18;
-
-  constructor(val: bigint) {
-    this.value = val;
-  }
-
-  static fromNumber(n: number): PreciseNumber {
-    return new PreciseNumber(BigInt(Math.round(n * PreciseNumber.SCALE_F)));
-  }
-
-  static fromString(s: string): PreciseNumber {
-    const isNeg = s.startsWith('-');
-    if (isNeg) s = s.substring(1);
-    const scale = PreciseNumber.SCALE;
-    
-    const dot = s.indexOf('.');
-    let big: bigint;
-    if (dot === -1) {
-        big = BigInt(s) * scale;
-    } else {
-        const intS = s.substring(0, dot);
-        const fracS = s.substring(dot + 1).padEnd(18, '0').slice(0, 18);
-        big = BigInt(intS) * scale + BigInt(fracS);
-    }
-    return new PreciseNumber(isNeg ? -big : big);
-  }
-
-  toString(): string {
-     // const s = this.value.toString(); // unused
-     const isNeg = this.value < 0n;
-     let abs = isNeg ? -this.value : this.value;
-     let str = abs.toString().padStart(19, '0'); 
-     const dotPos = str.length - 18;
-     const intPart = str.slice(0, dotPos);
-     const fracPart = str.slice(dotPos);
-     let res = `${intPart}.${fracPart}`;
-     res = res.replace(/\.?0+$/, "");
-     if (res === "") res = "0";
-     if (isNeg) res = "-" + res;
-     return res;
-  }
-
-  toExponential(digits: number): string {
-     return Number(this.toString()).toExponential(digits);
-  }
-
-  toNumber(): number {
-      return Number(this.value) / PreciseNumber.SCALE_F;
-  }
-  
-  add(other: PreciseNumber): PreciseNumber {
-      return new PreciseNumber(this.value + other.value);
-  }
-  
-  sub(other: PreciseNumber): PreciseNumber {
-      return new PreciseNumber(this.value - other.value);
-  }
-  
-  mul(limit: number): PreciseNumber {
-      const scalar = BigInt(Math.round(limit * 1e9)); 
-      const res = (this.value * scalar) / 1_000_000_000n;
-      return new PreciseNumber(res);
-  }
-  
-  scale(factor: number): PreciseNumber {
-      const f = BigInt(Math.round(factor * 1e6));
-      return new PreciseNumber((this.value * f) / 1_000_000n);
-  }
-  
-  div(val: number): PreciseNumber { 
-       // Fix: Handle floating point divisors by scaling
-       // We want result = (this / val)
-       // Representation: (value / scale) / val = (value / (val * scale)) * scale? No.
-       // We want R such that R/SCALE = (V/SCALE) / val
-       // R = V / val
-       // Since we do integer math: R = (V * MUL) / (val * MUL)
-       // Let's use MUL = 1e9 to capture fractional val
-       const mul = 1_000_000_000n;
-       const divScaled = BigInt(Math.round(val * 1_000_000_000)); // val * 1e9
-       if (divScaled === 0n) throw new Error("Division by zero");
-       
-       return new PreciseNumber((this.value * mul) / divScaled);
-  }
-  
-  lt(other: PreciseNumber): boolean { return this.value < other.value; }
-  gt(other: PreciseNumber): boolean { return this.value > other.value; }
-}
+import { GpuRenderer, setup, RenderParams } from '../../pkg/fractal_rs';
+import { PreciseNumber } from './PreciseNumber';
 
 async function run() {
-  console.log("Starting App...");
-  await init();
+  console.log('Starting App...');
+  // await init(); // Handled by vite-plugin-wasm
   setup();
-  console.log("Wasm initialized");
+  console.log('Wasm initialized');
 
   const canvas = document.getElementById('mandelbrot-canvas') as HTMLCanvasElement;
   // Use 'canvas' as the main GPU canvas or just remove it and use gpuCanvas?
@@ -148,13 +57,25 @@ async function run() {
   const pW = params.get('w');
 
   if (pX) {
-      try { centerX = PreciseNumber.fromString(pX); } catch (e) { console.error("Invalid x param", e); }
+    try {
+      centerX = PreciseNumber.fromString(pX);
+    } catch (e) {
+      console.error('Invalid x param', e);
+    }
   }
   if (pY) {
-      try { centerY = PreciseNumber.fromString(pY); } catch (e) { console.error("Invalid y param", e); }
+    try {
+      centerY = PreciseNumber.fromString(pY);
+    } catch (e) {
+      console.error('Invalid y param', e);
+    }
   }
   if (pW) {
-      try { zoomWidth = PreciseNumber.fromString(pW); } catch (e) { console.error("Invalid w param", e); }
+    try {
+      zoomWidth = PreciseNumber.fromString(pW);
+    } catch (e) {
+      console.error('Invalid w param', e);
+    }
   } // Starts showing full width
 
   // --- PERSISTENCE & STYLING ---
@@ -181,51 +102,51 @@ async function run() {
   // NO. `canvas { position: absolute; } ` inside a flex container centers them if we use margin:auto? No.
 
   // Buttons (created once)
-  const btnContainer = document.createElement("div");
-  btnContainer.id = "btn-container"; // Add ID for retrieval
-  btnContainer.style.marginTop = "8px";
-  btnContainer.style.display = "none"; // Hidden by default
-  btnContainer.style.gap = "8px";
+  const btnContainer = document.createElement('div');
+  btnContainer.id = 'btn-container'; // Add ID for retrieval
+  btnContainer.style.marginTop = '8px';
+  btnContainer.style.display = 'none'; // Hidden by default
+  btnContainer.style.gap = '8px';
   infoDiv.appendChild(btnContainer); // Add to infoDiv
 
-  const btnCopyCoords = document.createElement("button");
-  btnCopyCoords.innerText = "Copy Coords";
-  btnCopyCoords.style.cursor = "pointer";
-  btnCopyCoords.style.padding = "4px 8px";
+  const btnCopyCoords = document.createElement('button');
+  btnCopyCoords.innerText = 'Copy Coords';
+  btnCopyCoords.style.cursor = 'pointer';
+  btnCopyCoords.style.padding = '4px 8px';
 
-  const btnCopyUrl = document.createElement("button");
-  btnCopyUrl.innerText = "Copy URL";
-  btnCopyUrl.style.cursor = "pointer";
-  btnCopyUrl.style.padding = "4px 8px";
+  const btnCopyUrl = document.createElement('button');
+  btnCopyUrl.innerText = 'Copy URL';
+  btnCopyUrl.style.cursor = 'pointer';
+  btnCopyUrl.style.padding = '4px 8px';
 
   btnContainer.appendChild(btnCopyCoords);
   btnContainer.appendChild(btnCopyUrl);
 
   // Copy Logic
   const copyToClipboard = async (text: string) => {
-      try {
-        await navigator.clipboard.writeText(text);
-        const originalBg = infoDiv.style.backgroundColor;
-        infoDiv.style.backgroundColor = "rgba(0, 100, 0, 0.8)"; // Flash Green
-        setTimeout(() => infoDiv.style.backgroundColor = originalBg, 200);
-      } catch (err) {
-        // Fallback for non-secure context (dev) if needed, but modern browsers usually support writeText on localhost
-        console.error('Failed to copy', err);
-        alert("Clipboard API failed (Context not secure?): " + err);
-      }
+    try {
+      await navigator.clipboard.writeText(text);
+      const originalBg = infoDiv.style.backgroundColor;
+      infoDiv.style.backgroundColor = 'rgba(0, 100, 0, 0.8)'; // Flash Green
+      setTimeout(() => (infoDiv.style.backgroundColor = originalBg), 200);
+    } catch (err) {
+      // Fallback for non-secure context (dev) if needed, but modern browsers usually support writeText on localhost
+      console.error('Failed to copy', err);
+      alert('Clipboard API failed (Context not secure?): ' + err);
+    }
   };
 
   btnCopyCoords.onclick = () => {
-      const txt = `x=${centerX.toString()}\ny=${centerY.toString()}\nw=${zoomWidth.toString()}`;
-      copyToClipboard(txt);
+    const txt = `x=${centerX.toString()}\ny=${centerY.toString()}\nw=${zoomWidth.toString()}`;
+    copyToClipboard(txt);
   };
 
   btnCopyUrl.onclick = () => {
-      const url = new URL(window.location.href);
-      url.searchParams.set("x", centerX.toString());
-      url.searchParams.set("y", centerY.toString());
-      url.searchParams.set("w", zoomWidth.toString());
-      copyToClipboard(url.toString());
+    const url = new URL(window.location.href);
+    url.searchParams.set('x', centerX.toString());
+    url.searchParams.set('y', centerY.toString());
+    url.searchParams.set('w', zoomWidth.toString());
+    copyToClipboard(url.toString());
   };
 
   // Let's inject a Wrapper.
@@ -245,10 +166,10 @@ async function run() {
 
   // Let's apply styles directly
   const stackStyle = (el: HTMLElement) => {
-    el.style.gridArea = "1 / 1";
-    el.style.width = "100%";
-    el.style.height = "100%";
-    el.style.display = "block"; // Overridden by mode switcher
+    el.style.gridArea = '1 / 1';
+    el.style.width = '100%';
+    el.style.height = '100%';
+    el.style.display = 'block'; // Overridden by mode switcher
   };
 
   // Re-parent existing canvas
@@ -297,7 +218,7 @@ async function run() {
     height = Math.floor(logicalHeight * dpr);
 
     // Resize Canvases
-    [canvas, gpuCanvas, uiCanvas].forEach(el => {
+    [canvas, gpuCanvas, uiCanvas].forEach((el) => {
       el.width = width;
       el.height = height;
       // CSS width is handled by Wrapper + 100% style
@@ -320,20 +241,21 @@ async function run() {
     startRender();
   };
 
-
   // Initialize GPU
   try {
-    GpuRenderer.new(gpuCanvas).then(r => {
-      gpuRenderer = r;
-      gpuRenderer.resize(width, height); // Initial size
-      console.log("GPU Ready");
-      // infoDiv.innerText = "GPU Ready";
-      startRender();
-    }).catch(e => {
-      console.error("GPU Fail", e);
-      infoDiv.innerText = "GPU Failed to initialize";
-    });
-  } catch (e) { }
+    GpuRenderer.new(gpuCanvas)
+      .then((r) => {
+        gpuRenderer = r;
+        gpuRenderer.resize(width, height); // Initial size
+        console.log('GPU Ready');
+        // infoDiv.innerText = "GPU Ready";
+        startRender();
+      })
+      .catch((e) => {
+        console.error('GPU Fail', e);
+        infoDiv.innerText = 'GPU Failed to initialize';
+      });
+  } catch (e) {}
 
   // --- RENDERING VARS ---
   let pendingRenderId = 0;
@@ -346,21 +268,21 @@ async function run() {
     const zoomLevel = Math.log10(3.0 / zoomWidth.toNumber());
     const maxIter = Math.floor(100 + zoomLevel * 100);
     const resPercent = (100.0 / step).toFixed(1);
-    
+
     // Use a specific span for text to avoid overwriting buttons
-    let textSpan = infoDiv.querySelector("#info-text");
-    let btnContainer = infoDiv.querySelector("#btn-container") as HTMLElement;
+    let textSpan = infoDiv.querySelector('#info-text');
+    let btnContainer = infoDiv.querySelector('#btn-container') as HTMLElement;
 
     if (!textSpan) {
-        textSpan = document.createElement("div");
-        textSpan.id = "info-text";
-        if (btnContainer) {
-            infoDiv.insertBefore(textSpan, btnContainer);
-        } else {
-            infoDiv.appendChild(textSpan);
-        }
+      textSpan = document.createElement('div');
+      textSpan.id = 'info-text';
+      if (btnContainer) {
+        infoDiv.insertBefore(textSpan, btnContainer);
+      } else {
+        infoDiv.appendChild(textSpan);
+      }
     }
-    
+
     textSpan.innerHTML = `
       <div>Zoom: ${zoomWidth.toExponential(2)}</div>
       <div>Iters: ${maxIter}</div>
@@ -371,29 +293,28 @@ async function run() {
         w=${zoomWidth.toString()}
       </div>
     `;
-    
-    const details = textSpan.querySelector("#coords-detail") as HTMLElement;
-    
+
+    const details = textSpan.querySelector('#coords-detail') as HTMLElement;
+
     // We need to attach the hover listener to infoDiv to toggle this specific element too
     infoDiv.onmouseenter = () => {
-        if (btnContainer) btnContainer.style.display = "flex";
-        if (details) details.style.display = "block";
+      if (btnContainer) btnContainer.style.display = 'flex';
+      if (details) details.style.display = 'block';
     };
     infoDiv.onmouseleave = () => {
-         if (btnContainer) btnContainer.style.display = "none";
-         if (details) details.style.display = "none";
+      if (btnContainer) btnContainer.style.display = 'none';
+      if (details) details.style.display = 'none';
     };
 
     // Aspect Ratio Calculation
     // Ensure we don't divide by zero
-    const currentAspect = (width > 0 && height > 0) ? width / height : FRACTAL_ASPECT;
+    const currentAspect = width > 0 && height > 0 ? width / height : FRACTAL_ASPECT;
     const zoomHeight = zoomWidth.div(currentAspect);
-    
+
     const xMin = centerX.sub(zoomWidth.div(2)).toNumber();
     const xMax = centerX.add(zoomWidth.div(2)).toNumber();
     const yMin = centerY.sub(zoomHeight.div(2)).toNumber();
     const yMax = centerY.add(zoomHeight.div(2)).toNumber();
-
 
     if (gpuRenderer) {
       if (gpuCanvas.width !== width) {
@@ -412,9 +333,10 @@ async function run() {
       startStep = Math.pow(2, Math.floor(Math.log2(startStep)));
       if (startStep < 1) startStep = 1;
 
-      const reuse = (step < startStep);
+      const reuse = step < startStep;
 
-      gpuRenderer.render(xMin, xMax, yMin, yMax, maxIter, step, reuse);
+      const params = new RenderParams(xMin, xMax, yMin, yMax, maxIter, step, reuse);
+      gpuRenderer.render(params);
     }
 
     if (step > 1) {
@@ -450,13 +372,13 @@ async function run() {
     // Use actual aspect ratio to prevent distortion
     const currentAspect = width / height;
     const zoomHeight = zoomWidth.div(currentAspect);
-    
+
     // Bounds as PreciseNumber
     const bXMin = PreciseNumber.fromNumber(BOUND_X_MIN);
     const bXMax = PreciseNumber.fromNumber(BOUND_X_MAX);
     const bYMin = PreciseNumber.fromNumber(BOUND_Y_MIN);
     const bYMax = PreciseNumber.fromNumber(BOUND_Y_MAX);
-    
+
     const minCenterX = bXMin.add(zoomWidth.div(2));
     const maxCenterX = bXMax.sub(zoomWidth.div(2));
     const minCenterY = bYMin.add(zoomHeight.div(2));
@@ -472,7 +394,7 @@ async function run() {
     if (minCenterY.gt(maxCenterY)) {
       centerY = bYMin.add(bYMax).div(2);
     } else {
-      if (centerY.lt(minCenterY)) centerY = minCenterY; 
+      if (centerY.lt(minCenterY)) centerY = minCenterY;
       if (centerY.gt(maxCenterY)) centerY = maxCenterY;
     }
   };
@@ -509,27 +431,27 @@ async function run() {
     // Use actual logical dimensions or physical ratio?
     // Map pixel to complex scale based on CURRENT zoomWidth/Height and canvas size
     // zoomWidth / logicalWidth is effectively zoomWidth / (width / dpr)
-    
+
     const aspect = width / height;
-    const mapPixelW = zoomWidth.toNumber() / logicalWidth; 
-    // Heuristic: logicalWidth matches width/dpr. 
-    // But safely: 
+    const mapPixelW = zoomWidth.toNumber() / logicalWidth;
+    // Heuristic: logicalWidth matches width/dpr.
+    // But safely:
     // complex_per_pixel = zoomWidth / width (physical)
     // delta is physical pixels? No, e.clientX is logical CSS pixels.
     // So zoomWidth / logicalWidth is correct.
-    
+
     // zoomHeight = zoomWidth / aspect.
     // mapPixelH = zoomHeight / logicalHeight = (zoomWidth / aspect) / logicalHeight
-    
-    const mapPixelH = (zoomWidth.toNumber() / aspect) / logicalHeight;
+
+    const mapPixelH = zoomWidth.toNumber() / aspect / logicalHeight;
 
     // Precise subtraction?
-    // Delta calc: 
+    // Delta calc:
     // centerX = start - delta * scale
-    
+
     const dX = PreciseNumber.fromNumber(deltaX * mapPixelW);
     const dY = PreciseNumber.fromNumber(deltaY * mapPixelH);
-    
+
     centerX = dragStartComplexX.sub(dX);
     centerY = dragStartComplexY.sub(dY);
 
@@ -538,45 +460,51 @@ async function run() {
     startRender();
   });
 
-  window.addEventListener('mouseup', () => { isDragging = false; });
+  window.addEventListener('mouseup', () => {
+    isDragging = false;
+  });
 
-  wrapper.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const zoomFactor = e.deltaY < 0 ? 0.9 : 1.1;
-    const newZoomWidth = zoomWidth.scale(zoomFactor);
+  wrapper.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 0.9 : 1.1;
+      const newZoomWidth = zoomWidth.scale(zoomFactor);
 
-    const rect = wrapper.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+      const rect = wrapper.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
 
-    // UV Logic
-    const uvX = mouseX / logicalWidth;
-    const uvY = mouseY / logicalHeight;
-    
-    const currentAspect = width / height;
-    const currentZoomHeight = zoomWidth.div(currentAspect);
-    const newZoomHeight = newZoomWidth.div(currentAspect);
+      // UV Logic
+      const uvX = mouseX / logicalWidth;
+      const uvY = mouseY / logicalHeight;
 
-    // Offset
-    // nextCenterX = centerX + (uvX - 0.5) * (zoomWidth - newZoomWidth)
-    // Using Precise Math
-    
-    const diffW = zoomWidth.sub(newZoomWidth);
-    const diffH = currentZoomHeight.sub(newZoomHeight);
-    
-    const offX = diffW.mul(uvX - 0.5);
-    const offY = diffH.mul(uvY - 0.5);
+      const currentAspect = width / height;
+      const currentZoomHeight = zoomWidth.div(currentAspect);
+      const newZoomHeight = newZoomWidth.div(currentAspect);
 
-    const nextCenterX = centerX.add(offX);
-    const nextCenterY = centerY.add(offY);
+      // Offset
+      // nextCenterX = centerX + (uvX - 0.5) * (zoomWidth - newZoomWidth)
+      // Using Precise Math
 
-    centerX = nextCenterX;
-    centerY = nextCenterY;
-    zoomWidth = newZoomWidth;
+      const diffW = zoomWidth.sub(newZoomWidth);
+      const diffH = currentZoomHeight.sub(newZoomHeight);
 
-    applyConstraints(); // Clamp
-    startRender();
-  }, { passive: false });
+      const offX = diffW.mul(uvX - 0.5);
+      const offY = diffH.mul(uvY - 0.5);
+
+      const nextCenterX = centerX.add(offX);
+      const nextCenterY = centerY.add(offY);
+
+      centerX = nextCenterX;
+      centerY = nextCenterY;
+      zoomWidth = newZoomWidth;
+
+      applyConstraints(); // Clamp
+      startRender();
+    },
+    { passive: false },
+  );
 
   window.addEventListener('resize', () => {
     updateLayout();
