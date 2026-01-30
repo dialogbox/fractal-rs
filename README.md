@@ -20,9 +20,14 @@ A WebAssembly-powered Mandelbrot set renderer built with Rust (WGPU) and TypeScr
 ### Web Version
 
 1.  **Build WASM**:
-    ```bash
-    wasm-pack build --target web
-    ```
+    - **Release (Optimized)**:
+      ```bash
+      wasm-pack build --target web
+      ```
+    - **Dev (Fast/Unoptimized)**:
+      ```bash
+      wasm-pack build --target web --dev
+      ```
 2.  **Run Frontend**:
 
     ```bash

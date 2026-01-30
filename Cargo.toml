@@ -43,5 +43,4 @@ features = [
 [dev-dependencies]
 wasm-bindgen-test = "0.3.34"
 
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = false
+
