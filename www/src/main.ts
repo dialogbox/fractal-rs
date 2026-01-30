@@ -1,9 +1,9 @@
-import { GpuRenderer, setup, RenderParams } from '../../pkg/fractal_rs';
+import init, { GpuRenderer, setup, RenderParams } from '../../pkg/fractal_rs';
 import { PreciseNumber } from './PreciseNumber';
 
 async function run() {
   console.log('Starting App...');
-  // await init(); // Handled by vite-plugin-wasm
+  await init(); 
   setup();
   console.log('Wasm initialized');
 
