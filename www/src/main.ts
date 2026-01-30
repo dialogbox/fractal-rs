@@ -35,9 +35,7 @@ async function run() {
   const BOUND_X_MAX = 1.0;
   const BOUND_Y_MIN = -1.2;
   const BOUND_Y_MAX = 1.2;
-  const FRACTAL_W = BOUND_X_MAX - BOUND_X_MIN; // 3.0
-  const FRACTAL_H = BOUND_Y_MAX - BOUND_Y_MIN; // 2.4
-  const FRACTAL_ASPECT = FRACTAL_W / FRACTAL_H; // 1.25
+  /* FRACTAL_W removed */
 
   const dpr = window.devicePixelRatio || 1;
   let logicalWidth = 800;
@@ -99,6 +97,14 @@ async function run() {
     } catch (e) {
       console.error('Invalid w param', e);
     }
+  } else {
+    // If no URL param, defaulting to "contain" logic:
+    // We want the shorter axis to cover 3.0 in problem space.
+    // If aspect > 1 (Landscape), Height is shorter -> Height=3.0 -> Width = 3.0 * aspect.
+    // If aspect < 1 (Portrait), Width is shorter -> Width=3.0.
+    const aspect = window.innerWidth / window.innerHeight;
+    const initialW = 3.0 * Math.max(1.0, aspect);
+    zoomWidth = PreciseNumber.fromNumber(initialW);
   } // Starts showing full width
 
   // --- PERSISTENCE & STYLING ---
@@ -266,28 +272,16 @@ async function run() {
 
   // --- LAYOUT LOGIC ---
   const updateLayout = () => {
-    const winW = window.innerWidth;
-    const winH = window.innerHeight;
-    const winAspect = winW / winH;
+    // Fill the window
+    logicalWidth = window.innerWidth;
+    logicalHeight = window.innerHeight;
 
-    // Calculate Fit Dimensions
-    if (winAspect > FRACTAL_ASPECT) {
-      // Window is wider than fractal -> Fit to Height
-      logicalHeight = winH;
-      logicalWidth = winH * FRACTAL_ASPECT;
-    } else {
-      // Window is taller -> Fit to Width
-      logicalWidth = winW;
-      logicalHeight = winW / FRACTAL_ASPECT;
-    }
-
-    // Snap to integers
-    logicalWidth = Math.floor(logicalWidth);
-    logicalHeight = Math.floor(logicalHeight);
-
-    // Wrapper Size (CSS handles centering in Body)
-    wrapper.style.width = logicalWidth + 'px';
-    wrapper.style.height = logicalHeight + 'px';
+    // Wrapper Size
+    wrapper.style.width = '100vw';
+    wrapper.style.height = '100vh';
+    wrapper.style.margin = '0';
+    document.body.style.margin = '0';
+    document.body.style.overflow = 'hidden';
 
     // Physical Resolution
     width = Math.floor(logicalWidth * dpr);
@@ -297,7 +291,6 @@ async function run() {
     [canvas, gpuCanvas, uiCanvas].forEach((el) => {
       el.width = width;
       el.height = height;
-      // CSS width is handled by Wrapper + 100% style
     });
 
     // Context Scaling
@@ -384,7 +377,7 @@ async function run() {
 
     // Aspect Ratio Calculation
     // Ensure we don't divide by zero
-    const currentAspect = width > 0 && height > 0 ? width / height : FRACTAL_ASPECT;
+    const currentAspect = width > 0 && height > 0 ? width / height : 1.0;
     const zoomHeight = zoomWidth.div(currentAspect);
 
     const xMin = centerX.sub(zoomWidth.div(2));
@@ -453,15 +446,16 @@ async function run() {
   // --- CONSTRAINTS ---
   const applyConstraints = () => {
     // 1. Zoom Limits
-    // Actually we support more. Let's use 1e-35 logic later.
-    const MIN_ZOOM = PreciseNumber.fromNumber(logicalWidth * 1e-15); // Temporary floor
-    const MAX_ZOOM = PreciseNumber.fromNumber(FRACTAL_W);
+    // "Contain" logic: Shorter axis length = 3.0
+    const currentAspect = width / height;
+    const maxZ = 3.0 * Math.max(1.0, currentAspect);
+    const MAX_ZOOM = PreciseNumber.fromNumber(maxZ);
+
+    const MIN_ZOOM = PreciseNumber.fromNumber(3.0 * 1e-15); // Deep zoom limit
 
     if (zoomWidth.lt(MIN_ZOOM)) zoomWidth = MIN_ZOOM;
     if (zoomWidth.gt(MAX_ZOOM)) zoomWidth = MAX_ZOOM;
 
-    // Use actual aspect ratio to prevent distortion
-    const currentAspect = width / height;
     const zoomHeight = zoomWidth.div(currentAspect);
 
     // Bounds as PreciseNumber
@@ -599,6 +593,7 @@ async function run() {
 
   window.addEventListener('resize', () => {
     updateLayout();
+    applyConstraints(); // Re-clamp zoom based on new aspect ratio
     // startRender called inside updateLayout
   });
 
