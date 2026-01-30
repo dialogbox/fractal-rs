@@ -56,6 +56,16 @@ async function run() {
   let brightMin = 0.0;
   let brightMax = 0.8;
 
+  // --- NAVIGATION PHYSICS ---
+  const keysHeld = new Set<string>();
+  let velX = 0;
+  let velY = 0;
+  let velZoom = 0;
+  const ACCEL = 0.05;
+  const FRICTION = 0.85;
+  const BASE_MOVE_SPEED = 0.02; // Fraction of screen per frame
+  const BASE_ZOOM_SPEED = 0.02;
+
   const hexToRgb = (hex: string) => {
     const r = parseInt(hex.slice(1, 3), 16) / 255;
     const g = parseInt(hex.slice(3, 5), 16) / 255;
@@ -377,10 +387,10 @@ async function run() {
     const currentAspect = width > 0 && height > 0 ? width / height : FRACTAL_ASPECT;
     const zoomHeight = zoomWidth.div(currentAspect);
 
-    const xMin = centerX.sub(zoomWidth.div(2)).toNumber();
-    const xMax = centerX.add(zoomWidth.div(2)).toNumber();
-    const yMin = centerY.sub(zoomHeight.div(2)).toNumber();
-    const yMax = centerY.add(zoomHeight.div(2)).toNumber();
+    const xMin = centerX.sub(zoomWidth.div(2));
+    const xMax = centerX.add(zoomWidth.div(2));
+    const yMin = centerY.sub(zoomHeight.div(2));
+    const yMax = centerY.add(zoomHeight.div(2));
 
     if (gpuRenderer) {
       if (gpuCanvas.width !== width) {
@@ -404,8 +414,14 @@ async function run() {
       const [c1r, c1g, c1b] = hexToRgb(color1);
       const [c2r, c2g, c2b] = hexToRgb(color2);
 
+      const [xmi_h, xmi_l] = xMin.split();
+      const [xma_h, xma_l] = xMax.split();
+      const [ymi_h, ymi_l] = yMin.split();
+      const [yma_h, yma_l] = yMax.split();
+
       const params = new RenderParams(
-        xMin, xMax, yMin, yMax, 
+        xmi_h, xmi_l, xma_h, xma_l,
+        ymi_h, ymi_l, yma_h, yma_l,
         maxIter, step, reuse,
         c1r, c1g, c1b,
         c2r, c2g, c2b,
@@ -585,6 +601,61 @@ async function run() {
     updateLayout();
     // startRender called inside updateLayout
   });
+
+  // --- KEYBOARD LOOP ---
+  window.addEventListener('keydown', (e) => {
+    keysHeld.add(e.code);
+  });
+  window.addEventListener('keyup', (e) => {
+    keysHeld.delete(e.code);
+  });
+
+  const updatePhysics = () => {
+    let changed = false;
+
+    // Panning Acceleration
+    if (keysHeld.has('ArrowUp')) velY -= ACCEL;
+    if (keysHeld.has('ArrowDown')) velY += ACCEL;
+    if (keysHeld.has('ArrowLeft')) velX -= ACCEL;
+    if (keysHeld.has('ArrowRight')) velX += ACCEL;
+
+    // Zooming Acceleration
+    if (keysHeld.has('PageUp')) velZoom -= ACCEL;
+    if (keysHeld.has('PageDown')) velZoom += ACCEL;
+
+    // Apply Friction
+    velX *= FRICTION;
+    velY *= FRICTION;
+    velZoom *= FRICTION;
+
+    // Thresholds
+    if (Math.abs(velX) < 0.001) velX = 0;
+    if (Math.abs(velY) < 0.001) velY = 0;
+    if (Math.abs(velZoom) < 0.001) velZoom = 0;
+
+    if (velX !== 0 || velY !== 0) {
+      const aspect = width / height;
+      const moveScale = zoomWidth.toNumber() * BASE_MOVE_SPEED;
+      centerX = centerX.add(PreciseNumber.fromNumber(velX * moveScale));
+      centerY = centerY.add(PreciseNumber.fromNumber(velY * moveScale / aspect));
+      changed = true;
+    }
+
+    if (velZoom !== 0) {
+      const zoomFactor = 1.0 + velZoom * BASE_ZOOM_SPEED;
+      zoomWidth = zoomWidth.scale(zoomFactor);
+      changed = true;
+    }
+
+    if (changed) {
+      applyConstraints();
+      startRender();
+    }
+
+    requestAnimationFrame(updatePhysics);
+  };
+
+  updatePhysics();
 
   // Start
   updateLayout(); // Sets sizes, creates renderer

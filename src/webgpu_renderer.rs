@@ -7,10 +7,10 @@ use crate::console;
 
 #[wasm_bindgen]
 pub struct RenderParams {
-    pub x_min: f64,
-    pub x_max: f64,
-    pub y_min: f64,
-    pub y_max: f64,
+    pub x_min_hi: f64, pub x_min_lo: f64,
+    pub x_max_hi: f64, pub x_max_lo: f64,
+    pub y_min_hi: f64, pub y_min_lo: f64,
+    pub y_max_hi: f64, pub y_max_lo: f64,
     pub max_iter: u32,
     pub step: u32,
     pub reuse: bool,
@@ -24,14 +24,17 @@ pub struct RenderParams {
 impl RenderParams {
     #[wasm_bindgen(constructor)]
     pub fn new(
-        x_min: f64, x_max: f64, y_min: f64, y_max: f64, 
+        x_min_hi: f64, x_min_lo: f64, x_max_hi: f64, x_max_lo: f64,
+        y_min_hi: f64, y_min_lo: f64, y_max_hi: f64, y_max_lo: f64,
         max_iter: u32, step: u32, reuse: bool,
         color1_r: f32, color1_g: f32, color1_b: f32,
         color2_r: f32, color2_g: f32, color2_b: f32,
         bright_min: f32, bright_max: f32
     ) -> RenderParams {
         RenderParams { 
-            x_min, x_max, y_min, y_max, max_iter, step, reuse,
+            x_min_hi, x_min_lo, x_max_hi, x_max_lo,
+            y_min_hi, y_min_lo, y_max_hi, y_max_lo,
+            max_iter, step, reuse,
             color1_r, color1_g, color1_b,
             color2_r, color2_g, color2_b,
             bright_min, bright_max
@@ -359,22 +362,14 @@ impl GpuRenderer {
 
         let (w_hi, w_lo) = split_f64(self.width as f64);
         let (h_hi, h_lo) = split_f64(self.height as f64);
-        let (x_min_hi, x_min_lo) = split_f64(p.x_min);
-        let (x_max_hi, x_max_lo) = split_f64(p.x_max);
-        let (y_min_hi, y_min_lo) = split_f64(p.y_min);
-        let (y_max_hi, y_max_lo) = split_f64(p.y_max);
-
-        let zoom_width = p.x_max - p.x_min;
-        let precision_mode = if zoom_width < 1e-4 { 1 } else { 0 };
-
-        console::log_1(&format!("Rust: Precision Mode: {} (Zoom: {:e})", precision_mode, zoom_width).into());
-
         let uniforms = Uniforms {
              width_hi: w_hi, width_lo: w_lo, height_hi: h_hi, height_lo: h_lo,
-             x_min_hi, x_min_lo, x_max_hi, x_max_lo,
-             y_min_hi, y_min_lo, y_max_hi, y_max_lo,
+             x_min_hi: p.x_min_hi as f32, x_min_lo: p.x_min_lo as f32,
+             x_max_hi: p.x_max_hi as f32, x_max_lo: p.x_max_lo as f32,
+             y_min_hi: p.y_min_hi as f32, y_min_lo: p.y_min_lo as f32,
+             y_max_hi: p.y_max_hi as f32, y_max_lo: p.y_max_lo as f32,
              max_iter: p.max_iter,
-             precision_mode,
+             precision_mode: if (p.x_max_hi - p.x_min_hi).abs() < 1e-4 { 1 } else { 0 },
              step_size: p.step,
              flags: if p.reuse { 1 } else { 0 },
              color1: [p.color1_r, p.color1_g, p.color1_b, 1.0],
