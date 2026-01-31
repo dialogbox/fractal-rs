@@ -19,3 +19,6 @@ Avoid a manual testing as possible as you can. i.e.
 
 - **Panic in Wasm**:
   - Ensure `console_error_panic_hook` is set up. Check the browser DevTools console for the Rust panic stack trace.
+- **Browser Testing**:
+  - Use Chrome Remote Debugger to verify the frontend code.
+  - If connect to local test server failed, always check if the server is running first.

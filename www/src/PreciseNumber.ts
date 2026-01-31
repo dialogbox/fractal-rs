@@ -95,6 +95,10 @@ export class PreciseNumber {
     return this.value > other.value;
   }
 
+  eq(other: PreciseNumber): boolean {
+    return this.value === other.value;
+  }
+
   split(): [number, number] {
     const valF = Number(this.value) / 1e18;
     const hi = Math.fround(valF);

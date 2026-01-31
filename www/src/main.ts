@@ -31,10 +31,10 @@ async function run() {
   controls.appendChild(infoDiv);
 
   // --- DIMENSIONS & CONSTANTS ---
-  const BOUND_X_MIN = -2.0;
-  const BOUND_X_MAX = 1.0;
-  const BOUND_Y_MIN = -1.2;
-  const BOUND_Y_MAX = 1.2;
+  const BOUND_X_MIN = -2.5;
+  const BOUND_X_MAX = 0.5;
+  const BOUND_Y_MIN = -1.5;
+  const BOUND_Y_MAX = 1.5;
   /* FRACTAL_W removed */
 
   const dpr = window.devicePixelRatio || 1;
@@ -44,7 +44,7 @@ async function run() {
   let height = 600;
 
   // --- STATE ---
-  let centerX = PreciseNumber.fromNumber(-0.5);
+  let centerX = PreciseNumber.fromNumber(-1.0);
   let centerY = PreciseNumber.fromNumber(0.0);
   let zoomWidth = PreciseNumber.fromNumber(3.0);
 
@@ -238,7 +238,26 @@ async function run() {
   wrapper.style.justifyContent = 'center';
   wrapper.style.alignItems = 'center';
   wrapper.style.boxShadow = '0 0 50px black';
+  // CSS for Limit Effects
+  const style = document.createElement('style');
+  style.innerHTML = `
+    .limit-glow {
+      box-shadow: inset 0 0 30px 10px rgba(255, 100, 50, 0.8);
+      transition: box-shadow 0.05s ease-out; /* Immediate attack */
+    }
+  `;
+  document.head.appendChild(style);
+  // Base transition for fade out
+  wrapper.style.transition = 'box-shadow 0.5s ease-out';
   document.body.appendChild(wrapper);
+
+  // Glow Overlay (Independent of Wrapper Shadow)
+  const glowOverlay = document.createElement('div');
+  glowOverlay.style.pointerEvents = 'none'; // Click-through
+  glowOverlay.style.zIndex = '100'; // Topmost
+  glowOverlay.style.position = 'absolute'; // Or grid area 1/1
+  // We'll use grid stack style below
+  wrapper.appendChild(glowOverlay);
 
   // Move canvases into wrapper
   // We need to ensuring they overlap.
@@ -258,6 +277,8 @@ async function run() {
   if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
   wrapper.appendChild(canvas);
   stackStyle(canvas);
+  // Stack Glow Overlay too
+  stackStyle(glowOverlay);
 
   wrapper.appendChild(gpuCanvas);
   stackStyle(gpuCanvas);
@@ -269,6 +290,74 @@ async function run() {
   wrapper.appendChild(uiCanvas);
   stackStyle(uiCanvas);
   const uiCtx = uiCanvas.getContext('2d');
+
+  // --- CONSTRAINTS --- (Moved up)
+  const applyConstraints = () => {
+    let changed = false;
+
+    // 1. Zoom Limits
+    // Calculate aspect ratio safe guarding against zero division
+    const currentAspect = (width > 0 && height > 0) ? width / height : 1.0;
+    const maxZ = 3.0 * Math.max(1.0, currentAspect);
+    const MAX_ZOOM = PreciseNumber.fromNumber(maxZ);
+
+    // MIN_ZOOM: Based on F64 precision limit.
+    const minZ = (width || 800) * Number.EPSILON * 2.0;
+    const MIN_ZOOM = PreciseNumber.fromNumber(minZ);
+
+    let atMin = false;
+    let atMax = false;
+
+    if (zoomWidth.lt(MIN_ZOOM)) {
+      zoomWidth = MIN_ZOOM;
+      changed = true;
+      atMin = true;
+    }
+    if (zoomWidth.toNumber() <= minZ * 1.01) atMin = true;
+
+    if (zoomWidth.gt(MAX_ZOOM)) {
+      zoomWidth = MAX_ZOOM;
+      changed = true;
+      atMax = true;
+    }
+    if (zoomWidth.toNumber() >= maxZ * 0.99) atMax = true;
+
+    const zoomHeight = zoomWidth.div(currentAspect);
+
+    // Bounds
+    const bXMin = PreciseNumber.fromNumber(BOUND_X_MIN);
+    const bXMax = PreciseNumber.fromNumber(BOUND_X_MAX);
+    const bYMin = PreciseNumber.fromNumber(BOUND_Y_MIN);
+    const bYMax = PreciseNumber.fromNumber(BOUND_Y_MAX);
+
+    const minCenterX = bXMin.add(zoomWidth.div(2));
+    const maxCenterX = bXMax.sub(zoomWidth.div(2));
+    const minCenterY = bYMin.add(zoomHeight.div(2));
+    const maxCenterY = bYMax.sub(zoomHeight.div(2));
+
+    let clampedCenterX = centerX;
+    let clampedCenterY = centerY;
+
+    // Clamp Center
+    if (minCenterX.gt(maxCenterX)) {
+      clampedCenterX = bXMin.add(bXMax).div(2);
+    } else {
+      if (clampedCenterX.lt(minCenterX)) clampedCenterX = minCenterX;
+      if (clampedCenterX.gt(maxCenterX)) clampedCenterX = maxCenterX;
+    }
+
+    if (minCenterY.gt(maxCenterY)) {
+      clampedCenterY = bYMin.add(bYMax).div(2);
+    } else {
+      if (clampedCenterY.lt(minCenterY)) clampedCenterY = minCenterY;
+      if (clampedCenterY.gt(maxCenterY)) clampedCenterY = maxCenterY;
+    }
+
+    if (clampedCenterX !== centerX) { centerX = clampedCenterX; changed = true; }
+    if (clampedCenterY !== centerY) { centerY = clampedCenterY; changed = true; }
+
+    return { changed, atMin, atMax };
+  };
 
   // --- LAYOUT LOGIC ---
   const updateLayout = () => {
@@ -306,6 +395,10 @@ async function run() {
     } else {
       gpuRenderer.resize(width, height);
     }
+
+
+    // Enforce constraints (handles initial URL params or resize events)
+    applyConstraints();
 
     startRender();
   };
@@ -430,6 +523,25 @@ async function run() {
     }
   };
 
+  // Limit Effect Helper
+  let limitTimer: number | null = null;
+  const triggerLimitEffect = () => {
+    // Attack: Fast transition
+    glowOverlay.style.transition = 'box-shadow 0.05s ease-out';
+    glowOverlay.classList.add('limit-glow');
+    
+    // Clear existing timer (debounce/sustain)
+    if (limitTimer) clearTimeout(limitTimer);
+    
+    // Set timer to remove glow
+    limitTimer = window.setTimeout(() => {
+      // Decay: Slow fade out
+      glowOverlay.style.transition = 'box-shadow 2s ease-out';
+      glowOverlay.classList.remove('limit-glow');
+      limitTimer = null;
+    }, 50); // Match attack time
+  };
+
   const startRender = () => {
     pendingRenderId++;
     const myId = pendingRenderId;
@@ -444,45 +556,7 @@ async function run() {
   };
 
   // --- CONSTRAINTS ---
-  const applyConstraints = () => {
-    // 1. Zoom Limits
-    // "Contain" logic: Shorter axis length = 3.0
-    const currentAspect = width / height;
-    const maxZ = 3.0 * Math.max(1.0, currentAspect);
-    const MAX_ZOOM = PreciseNumber.fromNumber(maxZ);
 
-    const MIN_ZOOM = PreciseNumber.fromNumber(3.0 * 1e-15); // Deep zoom limit
-
-    if (zoomWidth.lt(MIN_ZOOM)) zoomWidth = MIN_ZOOM;
-    if (zoomWidth.gt(MAX_ZOOM)) zoomWidth = MAX_ZOOM;
-
-    const zoomHeight = zoomWidth.div(currentAspect);
-
-    // Bounds as PreciseNumber
-    const bXMin = PreciseNumber.fromNumber(BOUND_X_MIN);
-    const bXMax = PreciseNumber.fromNumber(BOUND_X_MAX);
-    const bYMin = PreciseNumber.fromNumber(BOUND_Y_MIN);
-    const bYMax = PreciseNumber.fromNumber(BOUND_Y_MAX);
-
-    const minCenterX = bXMin.add(zoomWidth.div(2));
-    const maxCenterX = bXMax.sub(zoomWidth.div(2));
-    const minCenterY = bYMin.add(zoomHeight.div(2));
-    const maxCenterY = bYMax.sub(zoomHeight.div(2));
-
-    if (minCenterX.gt(maxCenterX)) {
-      centerX = bXMin.add(bXMax).div(2);
-    } else {
-      if (centerX.lt(minCenterX)) centerX = minCenterX;
-      if (centerX.gt(maxCenterX)) centerX = maxCenterX;
-    }
-
-    if (minCenterY.gt(maxCenterY)) {
-      centerY = bYMin.add(bYMax).div(2);
-    } else {
-      if (centerY.lt(minCenterY)) centerY = minCenterY;
-      if (centerY.gt(maxCenterY)) centerY = maxCenterY;
-    }
-  };
 
   // --- INTERACTION ---
   let isDragging = false;
@@ -513,36 +587,31 @@ async function run() {
     const deltaY = currentY - startY;
 
     // Map Pixel to Complex (delta)
-    // Use actual logical dimensions or physical ratio?
-    // Map pixel to complex scale based on CURRENT zoomWidth/Height and canvas size
-    // zoomWidth / logicalWidth is effectively zoomWidth / (width / dpr)
-
     const aspect = width / height;
     const mapPixelW = zoomWidth.toNumber() / logicalWidth;
-    // Heuristic: logicalWidth matches width/dpr.
-    // But safely:
-    // complex_per_pixel = zoomWidth / width (physical)
-    // delta is physical pixels? No, e.clientX is logical CSS pixels.
-    // So zoomWidth / logicalWidth is correct.
-
-    // zoomHeight = zoomWidth / aspect.
-    // mapPixelH = zoomHeight / logicalHeight = (zoomWidth / aspect) / logicalHeight
-
     const mapPixelH = zoomWidth.toNumber() / aspect / logicalHeight;
 
-    // Precise subtraction?
-    // Delta calc:
-    // centerX = start - delta * scale
+    // Check limits for panning
+    // User requested explicit panning to work even at limits
+    // const { atMin } = applyConstraints();
+    // if (atMin) return;
 
     const dX = PreciseNumber.fromNumber(deltaX * mapPixelW);
     const dY = PreciseNumber.fromNumber(deltaY * mapPixelH);
+
+    const prevX = centerX;
+    const prevY = centerY;
 
     centerX = dragStartComplexX.sub(dX);
     centerY = dragStartComplexY.sub(dY);
 
     applyConstraints(); // Clamp it
 
-    startRender();
+    // Only render if changed
+    const changed = centerX.toString() !== prevX.toString() ||
+                    centerY.toString() !== prevY.toString();
+    
+    if (changed) startRender();
   });
 
   window.addEventListener('mouseup', () => {
@@ -553,25 +622,61 @@ async function run() {
     'wheel',
     (e) => {
       e.preventDefault();
+      
+      const prevZoom = zoomWidth;
+      const prevX = centerX;
+      const prevY = centerY;
+
       const zoomFactor = e.deltaY < 0 ? 0.9 : 1.1;
-      const newZoomWidth = zoomWidth.scale(zoomFactor);
+      let newZoomWidth = zoomWidth.scale(zoomFactor);
+
+      // --- CLAMP PRE-CALCULATION ---
+      const currentAspect = width / height;
+      const maxZ = 3.0 * Math.max(1.0, currentAspect);
+      const MAX_ZOOM = PreciseNumber.fromNumber(maxZ);
+      // Ensure minZ matches applyConstraints logic
+      const minZ = (width || 800) * Number.EPSILON * 2.0;
+      const MIN_ZOOM = PreciseNumber.fromNumber(minZ);
+
+      let hitMin = false;
+      let hitMax = false;
+
+      // Check Limits
+      if (newZoomWidth.lt(MIN_ZOOM)) {
+          newZoomWidth = MIN_ZOOM;
+          hitMin = true;
+      }
+      // Check for effective reach of min limit (epsilon check for logic)
+      if (newZoomWidth.toNumber() <= minZ * 1.01) hitMin = true;
+
+      if (newZoomWidth.gt(MAX_ZOOM)) {
+          newZoomWidth = MAX_ZOOM;
+          hitMax = true;
+      }
+      if (newZoomWidth.toNumber() >= maxZ * 0.99) hitMax = true;
+
+      // Visual Feedback Logic
+      // If we tried to zoom IN (factor < 1) and are hitting MIN
+      if (zoomFactor < 1.0 && hitMin) {
+        triggerLimitEffect();
+      }
+      // If we tried to zoom OUT (factor > 1) and are hitting MAX
+      if (zoomFactor > 1.0 && hitMax) {
+         triggerLimitEffect();
+      }
 
       const rect = wrapper.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
-      // UV Logic
+      // UV Logic (Using clamped newZoomWidth)
       const uvX = mouseX / logicalWidth;
       const uvY = mouseY / logicalHeight;
 
-      const currentAspect = width / height;
       const currentZoomHeight = zoomWidth.div(currentAspect);
       const newZoomHeight = newZoomWidth.div(currentAspect);
 
-      // Offset
-      // nextCenterX = centerX + (uvX - 0.5) * (zoomWidth - newZoomWidth)
-      // Using Precise Math
-
+      // If limits hit, newZoomWidth == zoomWidth (or close), so diffW ~ 0 -> offX ~ 0
       const diffW = zoomWidth.sub(newZoomWidth);
       const diffH = currentZoomHeight.sub(newZoomHeight);
 
@@ -585,8 +690,20 @@ async function run() {
       centerY = nextCenterY;
       zoomWidth = newZoomWidth;
 
-      applyConstraints(); // Clamp
-      startRender();
+      // Apply Constraints for Bounds (zoom is already clamped safely)
+      applyConstraints(); 
+
+      // Visual Feedback Logic moved up to happen before offset calc
+      // So we can remove the old block
+
+      // Only render if effectively changed
+      const effectivelyChanged = !zoomWidth.eq(prevZoom) || 
+                      !centerX.eq(prevX) ||
+                      !centerY.eq(prevY);
+
+      if (effectivelyChanged) {
+         startRender();
+      }
     },
     { passive: false },
   );
@@ -606,6 +723,9 @@ async function run() {
   });
 
   const updatePhysics = () => {
+    const prevZoom = zoomWidth;
+    const prevX = centerX;
+    const prevY = centerY;
     let changed = false;
 
     // Panning Acceleration
@@ -631,6 +751,8 @@ async function run() {
     if (velX !== 0 || velY !== 0) {
       const aspect = width / height;
       const moveScale = zoomWidth.toNumber() * BASE_MOVE_SPEED;
+      // Prevent panning if at max zoom in (pincushion state) removed
+      // We allow panning attempts, but applyConstraints will clamp them.
       centerX = centerX.add(PreciseNumber.fromNumber(velX * moveScale));
       centerY = centerY.add(PreciseNumber.fromNumber(velY * moveScale / aspect));
       changed = true;
@@ -644,7 +766,20 @@ async function run() {
 
     if (changed) {
       applyConstraints();
-      startRender();
+      
+      const effectivelyChanged = !zoomWidth.eq(prevZoom) || 
+                                 !centerX.eq(prevX) || 
+                                 !centerY.eq(prevY);
+
+      if (effectivelyChanged) {
+        startRender();
+      } else {
+        // If Logic pushed, but Constraint blocked -> Trigger Limit Effect
+        const { atMin, atMax } = applyConstraints(); // Re-check state
+        // Check intent vs limit
+        if (velZoom > 0 && atMax) triggerLimitEffect();
+        if (velZoom < 0 && atMin) triggerLimitEffect();
+      }
     }
 
     requestAnimationFrame(updatePhysics);
