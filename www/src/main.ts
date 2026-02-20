@@ -618,6 +618,113 @@ async function run() {
     isDragging = false;
   });
 
+  // --- TOUCH SUPPORT ---
+  let initialPinchDistance: number | null = null;
+  let initialPinchZoom: PreciseNumber | null = null;
+
+  const getDistance = (t1: Touch, t2: Touch) => {
+    const dx = t1.clientX - t2.clientX;
+    const dy = t1.clientY - t2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+
+
+  wrapper.addEventListener('touchstart', (e) => {
+    e.preventDefault(); // Stop default browser gestures immediately
+    if (e.touches.length === 1) {
+      // Single Touch Pan
+      isDragging = true; // Use existing flag logic for ease
+      const t = e.touches[0];
+      const rect = wrapper.getBoundingClientRect();
+      startX = t.clientX - rect.left;
+      startY = t.clientY - rect.top;
+      dragStartComplexX = centerX;
+      dragStartComplexY = centerY;
+    } else if (e.touches.length === 2) {
+      // Pinch Zoom
+      isDragging = false; // Stop Panning logic
+      initialPinchDistance = getDistance(e.touches[0], e.touches[1]);
+      initialPinchZoom = zoomWidth;
+      // Midpoint logic reserved for future center-zoom implementation
+    }
+  }, { passive: false });
+
+  wrapper.addEventListener('touchmove', (e) => {
+    e.preventDefault(); // Prevent scrolling
+    if (e.touches.length === 1 && isDragging) {
+      // Pan Logic (Copy of Mouse Logic essentially)
+      const t = e.touches[0];
+      const rect = wrapper.getBoundingClientRect();
+      const currentX = t.clientX - rect.left;
+      const currentY = t.clientY - rect.top;
+
+      const deltaX = currentX - startX;
+      const deltaY = currentY - startY;
+
+      const aspect = width / height;
+      const mapPixelW = zoomWidth.toNumber() / logicalWidth;
+      const mapPixelH = zoomWidth.toNumber() / aspect / logicalHeight;
+
+      const dX = PreciseNumber.fromNumber(deltaX * mapPixelW);
+      const dY = PreciseNumber.fromNumber(deltaY * mapPixelH);
+      
+      const prevX = centerX;
+      const prevY = centerY;
+
+      centerX = dragStartComplexX.sub(dX);
+      centerY = dragStartComplexY.sub(dY);
+
+      applyConstraints(); 
+      const changed = centerX.toString() !== prevX.toString() ||
+                      centerY.toString() !== prevY.toString();
+      if (changed) startRender();
+
+    } else if (e.touches.length === 2 && initialPinchDistance !== null && initialPinchZoom) {
+       // Pinch Logic
+       const currentDist = getDistance(e.touches[0], e.touches[1]);
+       const scale = initialPinchDistance / currentDist; 
+       
+       const prevZoom = zoomWidth;
+       let newZoomWidth = initialPinchZoom.scale(scale);
+
+       // Apply Constraints similar to wheel
+       const currentAspect = width / height;
+       const maxZ = 3.0 * Math.max(1.0, currentAspect);
+       const MAX_ZOOM = PreciseNumber.fromNumber(maxZ);
+       const minZ = (width || 800) * Number.EPSILON * 2.0;
+       const MIN_ZOOM = PreciseNumber.fromNumber(minZ);
+
+       let hitMin = false;
+       let hitMax = false;
+
+       if (newZoomWidth.lt(MIN_ZOOM)) { newZoomWidth = MIN_ZOOM; hitMin = true; }
+       if (newZoomWidth.gt(MAX_ZOOM)) { newZoomWidth = MAX_ZOOM; hitMax = true; }
+
+       // Visual Feedback logic reuse?
+       if (scale < 1.0 && hitMin) triggerLimitEffect(); // Pinch Out (Zoom In)
+       if (scale > 1.0 && hitMax) triggerLimitEffect(); // Pinch In (Zoom Out)
+
+       zoomWidth = newZoomWidth;
+       
+       // Center Logic: TODO - Zoom towards pinch center? 
+       // Currently just zooming centered on screen (Simple Pinch)
+       // Proper pinch-to-zoom keeps the point under fingers stable.
+       // That requires offset math similar to Wheel. 
+       // For MVP "Pinch to Zoom", centering is acceptable first step.
+       // User usually pans w/ 1 finger then zooms.
+
+       applyConstraints();
+       if (!zoomWidth.eq(prevZoom)) startRender();
+    }
+  }, { passive: false });
+
+  wrapper.addEventListener('touchend', () => {
+    isDragging = false;
+    initialPinchDistance = null;
+    initialPinchZoom = null;
+  });
+
   wrapper.addEventListener(
     'wheel',
     (e) => {
