@@ -238,6 +238,7 @@ async function run() {
   wrapper.style.justifyContent = 'center';
   wrapper.style.alignItems = 'center';
   wrapper.style.boxShadow = '0 0 50px black';
+  wrapper.style.touchAction = 'none'; // Critical for iOS/Chrome mobile to avoid page scaling
   // CSS for Limit Effects
   const style = document.createElement('style');
   style.innerHTML = `
@@ -621,6 +622,21 @@ async function run() {
   // --- TOUCH SUPPORT ---
   let initialPinchDistance: number | null = null;
   let initialPinchZoom: PreciseNumber | null = null;
+  let initialPinchCenterX: number | null = null;
+  let initialPinchCenterY: number | null = null;
+  let initialPinchComplexX: PreciseNumber | null = null;
+  let initialPinchComplexY: PreciseNumber | null = null;
+
+  const debugTouch = document.createElement('div');
+  debugTouch.style.position = 'absolute';
+  debugTouch.style.bottom = '10px';
+  debugTouch.style.right = '10px';
+  debugTouch.style.background = 'rgba(0,0,0,0.5)';
+  debugTouch.style.color = 'lime';
+  debugTouch.style.padding = '5px';
+  debugTouch.style.pointerEvents = 'none';
+  debugTouch.style.zIndex = '1000';
+  document.body.appendChild(debugTouch);
 
   const getDistance = (t1: Touch, t2: Touch) => {
     const dx = t1.clientX - t2.clientX;
@@ -646,7 +662,15 @@ async function run() {
       isDragging = false; // Stop Panning logic
       initialPinchDistance = getDistance(e.touches[0], e.touches[1]);
       initialPinchZoom = zoomWidth;
-      // Midpoint logic reserved for future center-zoom implementation
+      
+      const rect = wrapper.getBoundingClientRect();
+      initialPinchCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+      initialPinchCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+      
+      initialPinchComplexX = centerX;
+      initialPinchComplexY = centerY;
+      
+      debugTouch.innerText = `Pinch Start: d=${initialPinchDistance.toFixed(1)}`;
     }
   }, { passive: false });
 
@@ -680,13 +704,15 @@ async function run() {
                       centerY.toString() !== prevY.toString();
       if (changed) startRender();
 
-    } else if (e.touches.length === 2 && initialPinchDistance !== null && initialPinchZoom) {
+    } else if (e.touches.length === 2 && initialPinchDistance !== null && initialPinchZoom && initialPinchCenterX !== null && initialPinchCenterY !== null && initialPinchComplexX && initialPinchComplexY) {
        // Pinch Logic
        const currentDist = getDistance(e.touches[0], e.touches[1]);
        const scale = initialPinchDistance / currentDist; 
        
        const prevZoom = zoomWidth;
        let newZoomWidth = initialPinchZoom.scale(scale);
+
+       debugTouch.innerText = `Pinch Move: scale=${scale.toFixed(2)} d=${currentDist.toFixed(1)}`;
 
        // Apply Constraints similar to wheel
        const currentAspect = width / height;
@@ -701,21 +727,29 @@ async function run() {
        if (newZoomWidth.lt(MIN_ZOOM)) { newZoomWidth = MIN_ZOOM; hitMin = true; }
        if (newZoomWidth.gt(MAX_ZOOM)) { newZoomWidth = MAX_ZOOM; hitMax = true; }
 
-       // Visual Feedback logic reuse?
+       // Visual Feedback logic reuse
        if (scale < 1.0 && hitMin) triggerLimitEffect(); // Pinch Out (Zoom In)
        if (scale > 1.0 && hitMax) triggerLimitEffect(); // Pinch In (Zoom Out)
 
+       // Center Logic: Zoom towards pinch center
+       const uvX = initialPinchCenterX / logicalWidth;
+       const uvY = initialPinchCenterY / logicalHeight;
+
+       const currentZoomHeight = initialPinchZoom.div(currentAspect);
+       const newZoomHeight = newZoomWidth.div(currentAspect);
+
+       const diffW = initialPinchZoom.sub(newZoomWidth);
+       const diffH = currentZoomHeight.sub(newZoomHeight);
+
+       const offX = diffW.mul(uvX - 0.5);
+       const offY = diffH.mul(uvY - 0.5);
+
+       centerX = initialPinchComplexX.add(offX);
+       centerY = initialPinchComplexY.add(offY);
        zoomWidth = newZoomWidth;
-       
-       // Center Logic: TODO - Zoom towards pinch center? 
-       // Currently just zooming centered on screen (Simple Pinch)
-       // Proper pinch-to-zoom keeps the point under fingers stable.
-       // That requires offset math similar to Wheel. 
-       // For MVP "Pinch to Zoom", centering is acceptable first step.
-       // User usually pans w/ 1 finger then zooms.
 
        applyConstraints();
-       if (!zoomWidth.eq(prevZoom)) startRender();
+       if (!zoomWidth.eq(prevZoom) || !centerX.eq(initialPinchComplexX) || !centerY.eq(initialPinchComplexY)) startRender();
     }
   }, { passive: false });
 
@@ -723,6 +757,11 @@ async function run() {
     isDragging = false;
     initialPinchDistance = null;
     initialPinchZoom = null;
+    initialPinchCenterX = null;
+    initialPinchCenterY = null;
+    initialPinchComplexX = null;
+    initialPinchComplexY = null;
+    debugTouch.innerText = 'Touch End';
   });
 
   wrapper.addEventListener(
