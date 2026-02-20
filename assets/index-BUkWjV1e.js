@@ -930,7 +930,7 @@ function Pt() {
   }, __wbg_prototypesetcall_bdcdcc5842e4d77d: function(e, t, n) {
     Uint8Array.prototype.set.call(qe(e, t), n);
   }, __wbg_pushErrorScope_b52914ff10ba6ce3: function(e, t) {
-    e.pushErrorScope(Lt[t]);
+    e.pushErrorScope(Ft[t]);
   }, __wbg_push_8ffdcb2063340ba5: function(e, t) {
     return e.push(t);
   }, __wbg_queryCounterEXT_b578f07c30420446: function(e, t, n) {
@@ -966,7 +966,7 @@ function Pt() {
     }, arguments);
   }, __wbg_reason_43acd39cce242b50: function(e) {
     const t = e.reason;
-    return (Ft.indexOf(t) + 1 || 3) - 1;
+    return (Lt.indexOf(t) + 1 || 3) - 1;
   }, __wbg_renderbufferStorageMultisample_bc0ae08a7abb887a: function(e, t, n, r, _, o) {
     e.renderbufferStorageMultisample(t >>> 0, n, r >>> 0, _, o);
   }, __wbg_renderbufferStorage_1bc02383614b76b2: function(e, t, n, r, _) {
@@ -1324,7 +1324,7 @@ function Ct(c, e, t) {
 function Tt(c, e, t, n) {
   i.wasm_bindgen__convert__closures_____invoke__h4d618390782b16f7(c, e, t, n);
 }
-const Et = ["error", "warning", "info"], Ft = ["unknown", "destroyed"], Lt = ["validation", "out-of-memory", "internal"], ze = ["uint16", "uint32"], Rt = ["r8unorm", "r8snorm", "r8uint", "r8sint", "r16uint", "r16sint", "r16float", "rg8unorm", "rg8snorm", "rg8uint", "rg8sint", "r32uint", "r32sint", "r32float", "rg16uint", "rg16sint", "rg16float", "rgba8unorm", "rgba8unorm-srgb", "rgba8snorm", "rgba8uint", "rgba8sint", "bgra8unorm", "bgra8unorm-srgb", "rgb9e5ufloat", "rgb10a2uint", "rgb10a2unorm", "rg11b10ufloat", "rg32uint", "rg32sint", "rg32float", "rgba16uint", "rgba16sint", "rgba16float", "rgba32uint", "rgba32sint", "rgba32float", "stencil8", "depth16unorm", "depth24plus", "depth24plus-stencil8", "depth32float", "depth32float-stencil8", "bc1-rgba-unorm", "bc1-rgba-unorm-srgb", "bc2-rgba-unorm", "bc2-rgba-unorm-srgb", "bc3-rgba-unorm", "bc3-rgba-unorm-srgb", "bc4-r-unorm", "bc4-r-snorm", "bc5-rg-unorm", "bc5-rg-snorm", "bc6h-rgb-ufloat", "bc6h-rgb-float", "bc7-rgba-unorm", "bc7-rgba-unorm-srgb", "etc2-rgb8unorm", "etc2-rgb8unorm-srgb", "etc2-rgb8a1unorm", "etc2-rgb8a1unorm-srgb", "etc2-rgba8unorm", "etc2-rgba8unorm-srgb", "eac-r11unorm", "eac-r11snorm", "eac-rg11unorm", "eac-rg11snorm", "astc-4x4-unorm", "astc-4x4-unorm-srgb", "astc-5x4-unorm", "astc-5x4-unorm-srgb", "astc-5x5-unorm", "astc-5x5-unorm-srgb", "astc-6x5-unorm", "astc-6x5-unorm-srgb", "astc-6x6-unorm", "astc-6x6-unorm-srgb", "astc-8x5-unorm", "astc-8x5-unorm-srgb", "astc-8x6-unorm", "astc-8x6-unorm-srgb", "astc-8x8-unorm", "astc-8x8-unorm-srgb", "astc-10x5-unorm", "astc-10x5-unorm-srgb", "astc-10x6-unorm", "astc-10x6-unorm-srgb", "astc-10x8-unorm", "astc-10x8-unorm-srgb", "astc-10x10-unorm", "astc-10x10-unorm-srgb", "astc-12x10-unorm", "astc-12x10-unorm-srgb", "astc-12x12-unorm", "astc-12x12-unorm-srgb"], wt = typeof FinalizationRegistry > "u" ? { register: () => {
+const Et = ["error", "warning", "info"], Lt = ["unknown", "destroyed"], Ft = ["validation", "out-of-memory", "internal"], ze = ["uint16", "uint32"], Rt = ["r8unorm", "r8snorm", "r8uint", "r8sint", "r16uint", "r16sint", "r16float", "rg8unorm", "rg8snorm", "rg8uint", "rg8sint", "r32uint", "r32sint", "r32float", "rg16uint", "rg16sint", "rg16float", "rgba8unorm", "rgba8unorm-srgb", "rgba8snorm", "rgba8uint", "rgba8sint", "bgra8unorm", "bgra8unorm-srgb", "rgb9e5ufloat", "rgb10a2uint", "rgb10a2unorm", "rg11b10ufloat", "rg32uint", "rg32sint", "rg32float", "rgba16uint", "rgba16sint", "rgba16float", "rgba32uint", "rgba32sint", "rgba32float", "stencil8", "depth16unorm", "depth24plus", "depth24plus-stencil8", "depth32float", "depth32float-stencil8", "bc1-rgba-unorm", "bc1-rgba-unorm-srgb", "bc2-rgba-unorm", "bc2-rgba-unorm-srgb", "bc3-rgba-unorm", "bc3-rgba-unorm-srgb", "bc4-r-unorm", "bc4-r-snorm", "bc5-rg-unorm", "bc5-rg-snorm", "bc6h-rgb-ufloat", "bc6h-rgb-float", "bc7-rgba-unorm", "bc7-rgba-unorm-srgb", "etc2-rgb8unorm", "etc2-rgb8unorm-srgb", "etc2-rgb8a1unorm", "etc2-rgb8a1unorm-srgb", "etc2-rgba8unorm", "etc2-rgba8unorm-srgb", "eac-r11unorm", "eac-r11snorm", "eac-rg11unorm", "eac-rg11snorm", "astc-4x4-unorm", "astc-4x4-unorm-srgb", "astc-5x4-unorm", "astc-5x4-unorm-srgb", "astc-5x5-unorm", "astc-5x5-unorm-srgb", "astc-6x5-unorm", "astc-6x5-unorm-srgb", "astc-6x6-unorm", "astc-6x6-unorm-srgb", "astc-8x5-unorm", "astc-8x5-unorm-srgb", "astc-8x6-unorm", "astc-8x6-unorm-srgb", "astc-8x8-unorm", "astc-8x8-unorm-srgb", "astc-10x5-unorm", "astc-10x5-unorm-srgb", "astc-10x6-unorm", "astc-10x6-unorm-srgb", "astc-10x8-unorm", "astc-10x8-unorm-srgb", "astc-10x10-unorm", "astc-10x10-unorm-srgb", "astc-12x10-unorm", "astc-12x10-unorm-srgb", "astc-12x12-unorm", "astc-12x12-unorm-srgb"], wt = typeof FinalizationRegistry > "u" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((c) => i.__wbg_gpurenderer_free(c >>> 0, 1)), pt = typeof FinalizationRegistry > "u" ? { register: () => {
 }, unregister: () => {
@@ -1389,7 +1389,7 @@ function re(c, e) {
   return c = c >>> 0, qt().subarray(c / 4, c / 4 + e);
 }
 function qe(c, e) {
-  return c = c >>> 0, Fe().subarray(c / 1, c / 1 + e);
+  return c = c >>> 0, Le().subarray(c / 1, c / 1 + e);
 }
 let ae = null;
 function M() {
@@ -1423,7 +1423,7 @@ function qt() {
   return (Te === null || Te.byteLength === 0) && (Te = new Uint32Array(i.memory.buffer)), Te;
 }
 let Ee = null;
-function Fe() {
+function Le() {
   return (Ee === null || Ee.byteLength === 0) && (Ee = new Uint8Array(i.memory.buffer)), Ee;
 }
 function x(c, e) {
@@ -1454,11 +1454,11 @@ function ht(c, e, t, n) {
 }
 function z(c, e, t) {
   if (t === void 0) {
-    const a = Le.encode(c), f = e(a.length, 1) >>> 0;
-    return Fe().subarray(f, f + a.length).set(a), U = a.length, f;
+    const a = Fe.encode(c), f = e(a.length, 1) >>> 0;
+    return Le().subarray(f, f + a.length).set(a), U = a.length, f;
   }
   let n = c.length, r = e(n, 1) >>> 0;
-  const _ = Fe();
+  const _ = Le();
   let o = 0;
   for (; o < n; o++) {
     const a = c.charCodeAt(o);
@@ -1467,7 +1467,7 @@ function z(c, e, t) {
   }
   if (o !== n) {
     o !== 0 && (c = c.slice(o)), r = t(r, n, n = o + c.length * 3, 1) >>> 0;
-    const a = Fe().subarray(r + o, r + n), f = Le.encodeInto(c, a);
+    const a = Le().subarray(r + o, r + n), f = Fe.encodeInto(c, a);
     o += f.written, r = t(r, n, o, 1) >>> 0;
   }
   return U = o, r;
@@ -1477,11 +1477,11 @@ Ye.decode();
 const Yt = 2146435072;
 let _t = 0;
 function Zt(c, e) {
-  return _t += e, _t >= Yt && (Ye = new TextDecoder("utf-8", { ignoreBOM: true, fatal: true }), Ye.decode(), _t = e), Ye.decode(Fe().subarray(c, c + e));
+  return _t += e, _t >= Yt && (Ye = new TextDecoder("utf-8", { ignoreBOM: true, fatal: true }), Ye.decode(), _t = e), Ye.decode(Le().subarray(c, c + e));
 }
-const Le = new TextEncoder();
-"encodeInto" in Le || (Le.encodeInto = function(c, e) {
-  const t = Le.encode(c);
+const Fe = new TextEncoder();
+"encodeInto" in Fe || (Fe.encodeInto = function(c, e) {
+  const t = Fe.encode(c);
   return e.set(t), { read: c.length, written: t.length };
 });
 let U = 0, i;
@@ -1692,9 +1692,9 @@ w=${w.toString()}`;
     const d = s > 0 && m > 0 ? s / m : 1, h = 3 * Math.max(1, d), B = p.fromNumber(h), A = (s || 800) * Number.EPSILON * 2, S = p.fromNumber(A);
     let P = false, E = false;
     w.lt(S) && (w = S, u = true, P = true), w.toNumber() <= A * 1.01 && (P = true), w.gt(B) && (w = B, u = true, E = true), w.toNumber() >= h * 0.99 && (E = true);
-    const k = w.div(d), F = p.fromNumber(n), R = p.fromNumber(r), L = p.fromNumber(_), O = p.fromNumber(o), N = F.add(w.div(2)), D = R.sub(w.div(2)), j = L.add(k.div(2)), Q = O.sub(k.div(2));
+    const k = w.div(d), L = p.fromNumber(n), R = p.fromNumber(r), F = p.fromNumber(_), O = p.fromNumber(o), N = L.add(w.div(2)), D = R.sub(w.div(2)), j = F.add(k.div(2)), Q = O.sub(k.div(2));
     let W = g, G = v;
-    return N.gt(D) ? W = F.add(R).div(2) : (W.lt(N) && (W = N), W.gt(D) && (W = D)), j.gt(Q) ? G = L.add(O).div(2) : (G.lt(j) && (G = j), G.gt(Q) && (G = Q)), W !== g && (g = W, u = true), G !== v && (v = G, u = true), { changed: u, atMin: P, atMax: E };
+    return N.gt(D) ? W = L.add(R).div(2) : (W.lt(N) && (W = N), W.gt(D) && (W = D)), j.gt(Q) ? G = F.add(O).div(2) : (G.lt(j) && (G = j), G.gt(Q) && (G = Q)), W !== g && (g = W, u = true), G !== v && (v = G, u = true), { changed: u, atMin: P, atMax: E };
   }, bt = () => {
     f = window.innerWidth, b = window.innerHeight, I.style.width = "100vw", I.style.height = "100vh", I.style.margin = "0", document.body.style.margin = "0", document.body.style.overflow = "hidden", s = Math.floor(f * a), m = Math.floor(b * a), [c, $, fe].forEach((u) => {
       u.width = s, u.height = m;
@@ -1729,12 +1729,12 @@ w=${w.toString()}`;
     }, t.onmouseleave = () => {
       P && (P.style.display = "none"), E && (E.style.display = "none");
     };
-    const k = s > 0 && m > 0 ? s / m : 1, F = w.div(k), R = g.sub(w.div(2)), L = g.add(w.div(2)), O = v.sub(F.div(2)), N = v.add(F.div(2));
+    const k = s > 0 && m > 0 ? s / m : 1, L = w.div(k), R = g.sub(w.div(2)), F = g.add(w.div(2)), O = v.sub(L.div(2)), N = v.add(L.div(2));
     if (ue) {
       $.width !== s && ($.width = s, $.height = m);
       let D = Math.floor(Math.min(s, m) / 2);
       D = Math.min(D, 64), D = Math.pow(2, Math.floor(Math.log2(D))), D < 1 && (D = 1);
-      const j = u < D, [Q, W, G] = ct(ge), [Be, Je, Ke] = ct(le), [et, tt] = R.split(), [nt, rt] = L.split(), [mt, vt] = O.split(), [It, Bt] = N.split(), At = new Ze(et, tt, nt, rt, mt, vt, It, Bt, B, u, j, Q, W, G, Be, Je, Ke, me, we);
+      const j = u < D, [Q, W, G] = ct(ge), [Be, Je, Ke] = ct(le), [et, tt] = R.split(), [nt, rt] = F.split(), [mt, vt] = O.split(), [It, Bt] = N.split(), At = new Ze(et, tt, nt, rt, mt, vt, It, Bt, B, u, j, Q, W, G, Be, Je, Ke, me, we);
       ue.render(At);
     }
     if (u > 1) {
@@ -1760,8 +1760,8 @@ w=${w.toString()}`;
     Ne = u.clientX - d.left, We = u.clientY - d.top, Ge = g, Ue = v;
   }), window.addEventListener("mousemove", (u) => {
     if (!ce) return;
-    const d = I.getBoundingClientRect(), h = u.clientX - d.left, B = u.clientY - d.top, A = h - Ne, S = B - We, P = s / m, E = w.toNumber() / f, k = w.toNumber() / P / b, F = p.fromNumber(A * E), R = p.fromNumber(S * k), L = g, O = v;
-    g = Ge.sub(F), v = Ue.sub(R), te(), (g.toString() !== L.toString() || v.toString() !== O.toString()) && V();
+    const d = I.getBoundingClientRect(), h = u.clientX - d.left, B = u.clientY - d.top, A = h - Ne, S = B - We, P = s / m, E = w.toNumber() / f, k = w.toNumber() / P / b, L = p.fromNumber(A * E), R = p.fromNumber(S * k), F = g, O = v;
+    g = Ge.sub(L), v = Ue.sub(R), te(), (g.toString() !== F.toString() || v.toString() !== O.toString()) && V();
   }), window.addEventListener("mouseup", () => {
     ce = false;
   });
@@ -1782,29 +1782,31 @@ w=${w.toString()}`;
       const d = I.getBoundingClientRect();
       Xe = (u.touches[0].clientX + u.touches[1].clientX) / 2 - d.left, Ve = (u.touches[0].clientY + u.touches[1].clientY) / 2 - d.top, ve = g, Ie = v, X.innerText = `Pinch Start: d=${Se.toFixed(1)}`;
     }
-  }, { passive: false }), I.addEventListener("touchmove", (u) => {
+  }, { passive: false, capture: true }), I.addEventListener("touchmove", (u) => {
     if (u.preventDefault(), u.touches.length === 1 && ce) {
-      const d = u.touches[0], h = I.getBoundingClientRect(), B = d.clientX - h.left, A = d.clientY - h.top, S = B - Ne, P = A - We, E = s / m, k = w.toNumber() / f, F = w.toNumber() / E / b, R = p.fromNumber(S * k), L = p.fromNumber(P * F), O = g, N = v;
-      g = Ge.sub(R), v = Ue.sub(L), te(), (g.toString() !== O.toString() || v.toString() !== N.toString()) && V();
+      const d = u.touches[0], h = I.getBoundingClientRect(), B = d.clientX - h.left, A = d.clientY - h.top, S = B - Ne, P = A - We, E = s / m, k = w.toNumber() / f, L = w.toNumber() / E / b, R = p.fromNumber(S * k), F = p.fromNumber(P * L), O = g, N = v;
+      g = Ge.sub(R), v = Ue.sub(F), te(), (g.toString() !== O.toString() || v.toString() !== N.toString()) && V();
     } else if (u.touches.length === 2 && Se !== null && be && Xe !== null && Ve !== null && ve && Ie) {
       const d = gt(u.touches[0], u.touches[1]), h = Se / d, B = w;
       let A = be.scale(h);
       X.innerText = `Pinch Move: scale=${h.toFixed(2)} d=${d.toFixed(1)}`;
-      const S = s / m, P = 3 * Math.max(1, S), E = p.fromNumber(P), k = (s || 800) * Number.EPSILON * 2, F = p.fromNumber(k);
-      let R = false, L = false;
-      A.lt(F) && (A = F, R = true), A.gt(E) && (A = E, L = true), h < 1 && R && se(), h > 1 && L && se();
+      const S = s / m, P = 3 * Math.max(1, S), E = p.fromNumber(P), k = (s || 800) * Number.EPSILON * 2, L = p.fromNumber(k);
+      let R = false, F = false;
+      A.lt(L) && (A = L, R = true), A.gt(E) && (A = E, F = true), h < 1 && R && se(), h > 1 && F && se();
       const O = Xe / f, N = Ve / b, D = be.div(S), j = A.div(S), Q = be.sub(A), W = D.sub(j), G = Q.mul(O - 0.5), Be = W.mul(N - 0.5);
       g = ve.add(G), v = Ie.add(Be), w = A, te(), (!w.eq(B) || !g.eq(ve) || !v.eq(Ie)) && V();
     }
-  }, { passive: false }), I.addEventListener("touchend", () => {
+  }, { passive: false, capture: true }), I.addEventListener("touchend", () => {
     ce = false, Se = null, be = null, Xe = null, Ve = null, ve = null, Ie = null, X.innerText = "Touch End";
-  }), I.addEventListener("wheel", (u) => {
+  }, { passive: false, capture: true }), document.addEventListener("touchmove", (u) => {
+    u.preventDefault();
+  }, { passive: false, capture: true }), I.addEventListener("wheel", (u) => {
     u.preventDefault();
     const d = w, h = g, B = v, A = u.deltaY < 0 ? 0.9 : 1.1;
     let S = w.scale(A);
-    const P = s / m, E = 3 * Math.max(1, P), k = p.fromNumber(E), F = (s || 800) * Number.EPSILON * 2, R = p.fromNumber(F);
-    let L = false, O = false;
-    S.lt(R) && (S = R, L = true), S.toNumber() <= F * 1.01 && (L = true), S.gt(k) && (S = k, O = true), S.toNumber() >= E * 0.99 && (O = true), A < 1 && L && se(), A > 1 && O && se();
+    const P = s / m, E = 3 * Math.max(1, P), k = p.fromNumber(E), L = (s || 800) * Number.EPSILON * 2, R = p.fromNumber(L);
+    let F = false, O = false;
+    S.lt(R) && (S = R, F = true), S.toNumber() <= L * 1.01 && (F = true), S.gt(k) && (S = k, O = true), S.toNumber() >= E * 0.99 && (O = true), A < 1 && F && se(), A > 1 && O && se();
     const N = I.getBoundingClientRect(), D = u.clientX - N.left, j = u.clientY - N.top, Q = D / f, W = j / b, G = w.div(P), Be = S.div(P), Je = w.sub(S), Ke = G.sub(Be), et = Je.mul(Q - 0.5), tt = Ke.mul(W - 0.5), nt = g.add(et), rt = v.add(tt);
     g = nt, v = rt, w = S, te(), (!w.eq(d) || !g.eq(h) || !v.eq(B)) && V();
   }, { passive: false }), window.addEventListener("resize", () => {
