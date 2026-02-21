@@ -1,6 +1,8 @@
 import init, { GpuRenderer, setup, RenderParams } from '../../pkg/fractal_rs';
 import { PreciseNumber } from './PreciseNumber';
 
+declare const __COMMIT_HASH__: string;
+
 async function run() {
   console.log('Starting App...');
   await init(); 
@@ -26,9 +28,38 @@ async function run() {
   controls.style.zIndex = '100'; // Topmost
   document.body.appendChild(controls);
 
+  // Header for Top of Controls
+  const controlsHeader = document.createElement('div');
+  controlsHeader.style.display = 'flex';
+  controlsHeader.style.justifyContent = 'space-between';
+  controlsHeader.style.alignItems = 'center';
+  controlsHeader.style.cursor = 'pointer';
+  controls.appendChild(controlsHeader);
+
+  const controlsTitle = document.createElement('div');
+  controlsTitle.innerText = 'Controls';
+  controlsTitle.style.fontWeight = 'bold';
+  controlsHeader.appendChild(controlsTitle);
+
+  const collapseBtn = document.createElement('div');
+  collapseBtn.innerText = '[-]';
+  collapseBtn.style.fontFamily = 'monospace';
+  controlsHeader.appendChild(collapseBtn);
+
+  // Content Container
+  const controlsContent = document.createElement('div');
+  controls.appendChild(controlsContent);
+
+  let isControlsOpen = true;
+  controlsHeader.onclick = () => {
+    isControlsOpen = !isControlsOpen;
+    controlsContent.style.display = isControlsOpen ? 'block' : 'none';
+    collapseBtn.innerText = isControlsOpen ? '[-]' : '[+]';
+  };
+
   const infoDiv = document.createElement('div');
-  infoDiv.style.marginTop = '5px';
-  controls.appendChild(infoDiv);
+  infoDiv.style.marginTop = '10px';
+  controlsContent.appendChild(infoDiv);
 
   // --- DIMENSIONS & CONSTANTS ---
   const BOUND_X_MIN = -2.5;
@@ -159,7 +190,15 @@ async function run() {
   appearanceDiv.style.gap = '10px';
   appearanceDiv.style.borderTop = '1px solid rgba(255,255,255,0.2)';
   appearanceDiv.style.paddingTop = '10px';
-  controls.appendChild(appearanceDiv);
+  controlsContent.appendChild(appearanceDiv);
+
+  const versionDiv = document.createElement('div');
+  versionDiv.style.marginTop = '15px';
+  versionDiv.style.fontSize = '0.8em';
+  versionDiv.style.color = 'rgba(255,255,255,0.5)';
+  versionDiv.style.textAlign = 'center';
+  versionDiv.innerText = `Build: ${typeof __COMMIT_HASH__ !== 'undefined' ? __COMMIT_HASH__ : 'dev'}`;
+  appearanceDiv.appendChild(versionDiv);
 
   const createControl = (label: string, input: HTMLElement) => {
     const row = document.createElement('div');
