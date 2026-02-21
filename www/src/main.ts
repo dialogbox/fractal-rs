@@ -672,7 +672,7 @@ async function run() {
       
       debugTouch.innerText = `Pinch Start: d=${initialPinchDistance.toFixed(1)}`;
     }
-  }, { passive: false });
+  }, { passive: false, capture: true });
 
   wrapper.addEventListener('touchmove', (e) => {
     e.preventDefault(); // Prevent scrolling
@@ -751,7 +751,7 @@ async function run() {
        applyConstraints();
        if (!zoomWidth.eq(prevZoom) || !centerX.eq(initialPinchComplexX) || !centerY.eq(initialPinchComplexY)) startRender();
     }
-  }, { passive: false });
+  }, { passive: false, capture: true });
 
   wrapper.addEventListener('touchend', () => {
     isDragging = false;
@@ -762,7 +762,12 @@ async function run() {
     initialPinchComplexX = null;
     initialPinchComplexY = null;
     debugTouch.innerText = 'Touch End';
-  });
+  }, { passive: false, capture: true });
+
+  // Add global intercept to stop any rogue touchmoves from zooming the body
+  document.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+  }, { passive: false, capture: true });
 
   wrapper.addEventListener(
     'wheel',
