@@ -1675,7 +1675,7 @@ async function un() {
     _t = parseInt(ce.value), G();
   }, Se("Base Iters", ce);
   const Be = document.createElement("div");
-  Be.className = "meta-info", Be.style.marginTop = "10px", Be.style.textAlign = "center", Be.innerText = "Build: 2f5089c", me.appendChild(Be);
+  Be.className = "meta-info", Be.style.marginTop = "10px", Be.style.textAlign = "center", Be.innerText = "Build: a145c6d", me.appendChild(Be);
   const yt = async (u) => {
     try {
       await navigator.clipboard.writeText(u);
