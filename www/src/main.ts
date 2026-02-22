@@ -1,11 +1,12 @@
 import init, { GpuRenderer, setup, RenderParams } from '../../pkg/fractal_rs';
 import { PreciseNumber } from './PreciseNumber';
+import './style.css';
 
 declare const __COMMIT_HASH__: string;
 
 async function run() {
   console.log('Starting App...');
-  await init(); 
+  await init();
   setup();
   console.log('Wasm initialized');
 
@@ -18,47 +19,52 @@ async function run() {
 
   // UI Controls
   const controls = document.createElement('div');
+  controls.className = 'glass-panel';
   controls.style.position = 'absolute';
-  controls.style.top = '10px';
-  controls.style.left = '10px';
-  controls.style.background = 'rgba(0, 0, 0, 0.7)';
-  controls.style.color = 'white';
-  controls.style.padding = '10px';
-  controls.style.borderRadius = '5px';
+  controls.style.top = '12px';
+  controls.style.left = '12px';
   controls.style.zIndex = '100'; // Topmost
+  controls.style.width = 'fit-content';
   document.body.appendChild(controls);
 
   // Header for Top of Controls
-  const controlsHeader = document.createElement('div');
-  controlsHeader.style.display = 'flex';
-  controlsHeader.style.justifyContent = 'space-between';
-  controlsHeader.style.alignItems = 'center';
+  const controlsHeader = document.createElement('h3');
   controlsHeader.style.cursor = 'pointer';
   controls.appendChild(controlsHeader);
 
-  const controlsTitle = document.createElement('div');
+  const controlsTitle = document.createElement('span');
   controlsTitle.innerText = 'Controls';
-  controlsTitle.style.fontWeight = 'bold';
   controlsHeader.appendChild(controlsTitle);
 
-  const collapseBtn = document.createElement('div');
-  collapseBtn.innerText = '[-]';
-  collapseBtn.style.fontFamily = 'monospace';
+  const iconUp = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>`;
+  const iconDown = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+
+  const collapseBtn = document.createElement('button');
+  collapseBtn.className = 'btn-icon';
+  collapseBtn.innerHTML = iconUp;
   controlsHeader.appendChild(collapseBtn);
 
-  // Content Container
   const controlsContent = document.createElement('div');
   controls.appendChild(controlsContent);
 
-  let isControlsOpen = true;
+  let isControlsOpen = false; // Start collapsed
+  controlsContent.style.display = 'none';
+  controlsHeader.classList.add('collapsed');
+  collapseBtn.innerHTML = iconDown;
+
   controlsHeader.onclick = () => {
     isControlsOpen = !isControlsOpen;
     controlsContent.style.display = isControlsOpen ? 'block' : 'none';
-    collapseBtn.innerText = isControlsOpen ? '[-]' : '[+]';
+    collapseBtn.innerHTML = isControlsOpen ? iconUp : iconDown;
+    if (isControlsOpen) {
+      controlsHeader.classList.remove('collapsed');
+    } else {
+      controlsHeader.classList.add('collapsed');
+    }
   };
 
   const infoDiv = document.createElement('div');
-  infoDiv.style.marginTop = '10px';
+  infoDiv.className = 'meta-info';
   controlsContent.appendChild(infoDiv);
 
   // --- DIMENSIONS & CONSTANTS ---
@@ -84,6 +90,7 @@ async function run() {
   let color2 = '#1049ac';
   let brightMin = 0.0;
   let brightMax = 0.8;
+  let baseIters = 100;
 
   // --- NAVIGATION PHYSICS ---
   const keysHeld = new Set<string>();
@@ -163,50 +170,51 @@ async function run() {
 
   // Buttons (created once)
   const btnContainer = document.createElement('div');
-  btnContainer.id = 'btn-container'; // Add ID for retrieval
-  btnContainer.style.marginTop = '8px';
-  btnContainer.style.display = 'none'; // Hidden by default
-  btnContainer.style.gap = '8px';
-  infoDiv.appendChild(btnContainer); // Add to infoDiv
+  btnContainer.id = 'btn-container';
+  btnContainer.style.display = 'none'; // Hidden by default, flex on hover
+  btnContainer.style.flexDirection = 'column';
+  btnContainer.style.gap = '4px';
+  infoDiv.appendChild(btnContainer);
 
   const btnCopyCoords = document.createElement('button');
+  btnCopyCoords.className = 'btn-primary';
   btnCopyCoords.innerText = 'Copy Coords';
-  btnCopyCoords.style.cursor = 'pointer';
-  btnCopyCoords.style.padding = '4px 8px';
 
   const btnCopyUrl = document.createElement('button');
+  btnCopyUrl.className = 'btn-primary';
   btnCopyUrl.innerText = 'Copy URL';
-  btnCopyUrl.style.cursor = 'pointer';
-  btnCopyUrl.style.padding = '4px 8px';
+
+  const btnReset = document.createElement('button');
+  btnReset.className = 'btn-primary';
+  btnReset.style.background = 'rgba(255,255,255,0.1)';
+  btnReset.innerText = 'Reset View';
 
   btnContainer.appendChild(btnCopyCoords);
   btnContainer.appendChild(btnCopyUrl);
+  btnContainer.appendChild(btnReset);
+
+  btnReset.onclick = () => {
+    centerX = PreciseNumber.fromNumber(-0.5);
+    centerY = PreciseNumber.fromNumber(0.0);
+    const aspect = window.innerWidth / window.innerHeight;
+    const initialW = 3.0 * Math.max(1.0, aspect);
+    zoomWidth = PreciseNumber.fromNumber(initialW);
+    applyConstraints();
+    startRender();
+  };
 
   // --- APPEARANCE UI ---
   const appearanceDiv = document.createElement('div');
-  appearanceDiv.style.marginTop = '15px';
-  appearanceDiv.style.display = 'flex';
-  appearanceDiv.style.flexDirection = 'column';
-  appearanceDiv.style.gap = '10px';
-  appearanceDiv.style.borderTop = '1px solid rgba(255,255,255,0.2)';
+  appearanceDiv.style.marginTop = '10px';
+  appearanceDiv.style.borderTop = '1px solid var(--border-color)';
   appearanceDiv.style.paddingTop = '10px';
   controlsContent.appendChild(appearanceDiv);
 
-  const versionDiv = document.createElement('div');
-  versionDiv.style.marginTop = '15px';
-  versionDiv.style.fontSize = '0.8em';
-  versionDiv.style.color = 'rgba(255,255,255,0.5)';
-  versionDiv.style.textAlign = 'center';
-  versionDiv.innerText = `Build: ${typeof __COMMIT_HASH__ !== 'undefined' ? __COMMIT_HASH__ : 'dev'}`;
-  appearanceDiv.appendChild(versionDiv);
-
   const createControl = (label: string, input: HTMLElement) => {
     const row = document.createElement('div');
-    row.style.display = 'flex';
-    row.style.justifyContent = 'space-between';
-    row.style.alignItems = 'center';
-    row.style.fontSize = '0.9em';
+    row.className = 'control-group';
     const l = document.createElement('label');
+    l.className = 'control-label';
     l.innerText = label;
     row.appendChild(l);
     row.appendChild(input);
@@ -216,13 +224,19 @@ async function run() {
   const cp1 = document.createElement('input');
   cp1.type = 'color';
   cp1.value = color1;
-  cp1.oninput = () => { color1 = cp1.value; startRender(); };
+  cp1.oninput = () => {
+    color1 = cp1.value;
+    startRender();
+  };
   createControl('Color 1', cp1);
 
   const cp2 = document.createElement('input');
   cp2.type = 'color';
   cp2.value = color2;
-  cp2.oninput = () => { color2 = cp2.value; startRender(); };
+  cp2.oninput = () => {
+    color2 = cp2.value;
+    startRender();
+  };
   createControl('Color 2', cp2);
 
   const sMin = document.createElement('input');
@@ -231,7 +245,10 @@ async function run() {
   sMin.max = '1';
   sMin.step = '0.01';
   sMin.value = brightMin.toString();
-  sMin.oninput = () => { brightMin = parseFloat(sMin.value); startRender(); };
+  sMin.oninput = () => {
+    brightMin = parseFloat(sMin.value);
+    startRender();
+  };
   createControl('Min Bright', sMin);
 
   const sMax = document.createElement('input');
@@ -240,8 +257,30 @@ async function run() {
   sMax.max = '1';
   sMax.step = '0.01';
   sMax.value = brightMax.toString();
-  sMax.oninput = () => { brightMax = parseFloat(sMax.value); startRender(); };
+  sMax.oninput = () => {
+    brightMax = parseFloat(sMax.value);
+    startRender();
+  };
   createControl('Max Bright', sMax);
+
+  const sIters = document.createElement('input');
+  sIters.type = 'range';
+  sIters.min = '50';
+  sIters.max = '1000';
+  sIters.step = '50';
+  sIters.value = baseIters.toString();
+  sIters.oninput = () => {
+    baseIters = parseInt(sIters.value);
+    startRender();
+  };
+  createControl('Base Iters', sIters);
+
+  const versionDiv = document.createElement('div');
+  versionDiv.className = 'meta-info';
+  versionDiv.style.marginTop = '10px';
+  versionDiv.style.textAlign = 'center';
+  versionDiv.innerText = `Build: ${typeof __COMMIT_HASH__ !== 'undefined' ? __COMMIT_HASH__ : 'dev'}`;
+  appearanceDiv.appendChild(versionDiv);
 
   // Copy Logic
   const copyToClipboard = async (text: string) => {
@@ -337,7 +376,7 @@ async function run() {
 
     // 1. Zoom Limits
     // Calculate aspect ratio safe guarding against zero division
-    const currentAspect = (width > 0 && height > 0) ? width / height : 1.0;
+    const currentAspect = width > 0 && height > 0 ? width / height : 1.0;
     const maxZ = 3.0 * Math.max(1.0, currentAspect);
     const MAX_ZOOM = PreciseNumber.fromNumber(maxZ);
 
@@ -393,8 +432,14 @@ async function run() {
       if (clampedCenterY.gt(maxCenterY)) clampedCenterY = maxCenterY;
     }
 
-    if (clampedCenterX !== centerX) { centerX = clampedCenterX; changed = true; }
-    if (clampedCenterY !== centerY) { centerY = clampedCenterY; changed = true; }
+    if (clampedCenterX !== centerX) {
+      centerX = clampedCenterX;
+      changed = true;
+    }
+    if (clampedCenterY !== centerY) {
+      centerY = clampedCenterY;
+      changed = true;
+    }
 
     return { changed, atMin, atMax };
   };
@@ -436,7 +481,6 @@ async function run() {
       gpuRenderer.resize(width, height);
     }
 
-
     // Enforce constraints (handles initial URL params or resize events)
     applyConstraints();
 
@@ -457,7 +501,9 @@ async function run() {
         console.error('GPU Fail', e);
         infoDiv.innerText = 'GPU Failed to initialize';
       });
-  } catch (e) {}
+  } catch (e) {
+    console.error('Initial GPU setup threw an error', e);
+  }
 
   // --- RENDERING VARS ---
   let pendingRenderId = 0;
@@ -468,12 +514,12 @@ async function run() {
 
     // Info
     const zoomLevel = Math.log10(3.0 / zoomWidth.toNumber());
-    const maxIter = Math.floor(100 + zoomLevel * 100);
+    const maxIter = Math.floor(baseIters + Math.max(0, zoomLevel) * 100);
     const resPercent = (100.0 / step).toFixed(1);
 
     // Use a specific span for text to avoid overwriting buttons
     let textSpan = infoDiv.querySelector('#info-text');
-    let btnContainer = infoDiv.querySelector('#btn-container') as HTMLElement;
+    const btnContainer = infoDiv.querySelector('#btn-container') as HTMLElement;
 
     if (!textSpan) {
       textSpan = document.createElement('div');
@@ -546,12 +592,25 @@ async function run() {
       const [yma_h, yma_l] = yMax.split();
 
       const params = new RenderParams(
-        xmi_h, xmi_l, xma_h, xma_l,
-        ymi_h, ymi_l, yma_h, yma_l,
-        maxIter, step, reuse,
-        c1r, c1g, c1b,
-        c2r, c2g, c2b,
-        brightMin, brightMax
+        xmi_h,
+        xmi_l,
+        xma_h,
+        xma_l,
+        ymi_h,
+        ymi_l,
+        yma_h,
+        yma_l,
+        maxIter,
+        step,
+        reuse,
+        c1r,
+        c1g,
+        c1b,
+        c2r,
+        c2g,
+        c2b,
+        brightMin,
+        brightMax,
       );
       gpuRenderer.render(params);
     }
@@ -569,10 +628,10 @@ async function run() {
     // Attack: Fast transition
     glowOverlay.style.transition = 'box-shadow 0.05s ease-out';
     glowOverlay.classList.add('limit-glow');
-    
+
     // Clear existing timer (debounce/sustain)
     if (limitTimer) clearTimeout(limitTimer);
-    
+
     // Set timer to remove glow
     limitTimer = window.setTimeout(() => {
       // Decay: Slow fade out
@@ -596,7 +655,6 @@ async function run() {
   };
 
   // --- CONSTRAINTS ---
-
 
   // --- INTERACTION ---
   let isDragging = false;
@@ -648,9 +706,8 @@ async function run() {
     applyConstraints(); // Clamp it
 
     // Only render if changed
-    const changed = centerX.toString() !== prevX.toString() ||
-                    centerY.toString() !== prevY.toString();
-    
+    const changed = centerX.toString() !== prevX.toString() || centerY.toString() !== prevY.toString();
+
     if (changed) startRender();
   });
 
@@ -683,136 +740,163 @@ async function run() {
     return Math.sqrt(dx * dx + dy * dy);
   };
 
+  wrapper.addEventListener(
+    'touchstart',
+    (e) => {
+      e.preventDefault(); // Stop default browser gestures immediately
+      if (e.touches.length === 1) {
+        // Single Touch Pan
+        isDragging = true; // Use existing flag logic for ease
+        const t = e.touches[0];
+        const rect = wrapper.getBoundingClientRect();
+        startX = t.clientX - rect.left;
+        startY = t.clientY - rect.top;
+        dragStartComplexX = centerX;
+        dragStartComplexY = centerY;
+      } else if (e.touches.length === 2) {
+        // Pinch Zoom
+        isDragging = false; // Stop Panning logic
+        initialPinchDistance = getDistance(e.touches[0], e.touches[1]);
+        initialPinchZoom = zoomWidth;
 
+        const rect = wrapper.getBoundingClientRect();
+        initialPinchCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+        initialPinchCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
 
-  wrapper.addEventListener('touchstart', (e) => {
-    e.preventDefault(); // Stop default browser gestures immediately
-    if (e.touches.length === 1) {
-      // Single Touch Pan
-      isDragging = true; // Use existing flag logic for ease
-      const t = e.touches[0];
-      const rect = wrapper.getBoundingClientRect();
-      startX = t.clientX - rect.left;
-      startY = t.clientY - rect.top;
-      dragStartComplexX = centerX;
-      dragStartComplexY = centerY;
-    } else if (e.touches.length === 2) {
-      // Pinch Zoom
-      isDragging = false; // Stop Panning logic
-      initialPinchDistance = getDistance(e.touches[0], e.touches[1]);
-      initialPinchZoom = zoomWidth;
-      
-      const rect = wrapper.getBoundingClientRect();
-      initialPinchCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
-      initialPinchCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
-      
-      initialPinchComplexX = centerX;
-      initialPinchComplexY = centerY;
-      
-      debugTouch.innerText = `Pinch Start: d=${initialPinchDistance.toFixed(1)}`;
-    }
-  }, { passive: false, capture: true });
+        initialPinchComplexX = centerX;
+        initialPinchComplexY = centerY;
 
-  wrapper.addEventListener('touchmove', (e) => {
-    e.preventDefault(); // Prevent scrolling
-    if (e.touches.length === 1 && isDragging) {
-      // Pan Logic (Copy of Mouse Logic essentially)
-      const t = e.touches[0];
-      const rect = wrapper.getBoundingClientRect();
-      const currentX = t.clientX - rect.left;
-      const currentY = t.clientY - rect.top;
+        debugTouch.innerText = `Pinch Start: d=${initialPinchDistance.toFixed(1)}`;
+      }
+    },
+    { passive: false, capture: true },
+  );
 
-      const deltaX = currentX - startX;
-      const deltaY = currentY - startY;
+  wrapper.addEventListener(
+    'touchmove',
+    (e) => {
+      e.preventDefault(); // Prevent scrolling
+      if (e.touches.length === 1 && isDragging) {
+        // Pan Logic (Copy of Mouse Logic essentially)
+        const t = e.touches[0];
+        const rect = wrapper.getBoundingClientRect();
+        const currentX = t.clientX - rect.left;
+        const currentY = t.clientY - rect.top;
 
-      const aspect = width / height;
-      const mapPixelW = zoomWidth.toNumber() / logicalWidth;
-      const mapPixelH = zoomWidth.toNumber() / aspect / logicalHeight;
+        const deltaX = currentX - startX;
+        const deltaY = currentY - startY;
 
-      const dX = PreciseNumber.fromNumber(deltaX * mapPixelW);
-      const dY = PreciseNumber.fromNumber(deltaY * mapPixelH);
-      
-      const prevX = centerX;
-      const prevY = centerY;
+        const aspect = width / height;
+        const mapPixelW = zoomWidth.toNumber() / logicalWidth;
+        const mapPixelH = zoomWidth.toNumber() / aspect / logicalHeight;
 
-      centerX = dragStartComplexX.sub(dX);
-      centerY = dragStartComplexY.sub(dY);
+        const dX = PreciseNumber.fromNumber(deltaX * mapPixelW);
+        const dY = PreciseNumber.fromNumber(deltaY * mapPixelH);
 
-      applyConstraints(); 
-      const changed = centerX.toString() !== prevX.toString() ||
-                      centerY.toString() !== prevY.toString();
-      if (changed) startRender();
+        const prevX = centerX;
+        const prevY = centerY;
 
-    } else if (e.touches.length === 2 && initialPinchDistance !== null && initialPinchZoom && initialPinchCenterX !== null && initialPinchCenterY !== null && initialPinchComplexX && initialPinchComplexY) {
-       // Pinch Logic
-       const currentDist = getDistance(e.touches[0], e.touches[1]);
-       const scale = initialPinchDistance / currentDist; 
-       
-       const prevZoom = zoomWidth;
-       let newZoomWidth = initialPinchZoom.scale(scale);
+        centerX = dragStartComplexX.sub(dX);
+        centerY = dragStartComplexY.sub(dY);
 
-       debugTouch.innerText = `Pinch Move: scale=${scale.toFixed(2)} d=${currentDist.toFixed(1)}`;
+        applyConstraints();
+        const changed = centerX.toString() !== prevX.toString() || centerY.toString() !== prevY.toString();
+        if (changed) startRender();
+      } else if (
+        e.touches.length === 2 &&
+        initialPinchDistance !== null &&
+        initialPinchZoom &&
+        initialPinchCenterX !== null &&
+        initialPinchCenterY !== null &&
+        initialPinchComplexX &&
+        initialPinchComplexY
+      ) {
+        // Pinch Logic
+        const currentDist = getDistance(e.touches[0], e.touches[1]);
+        const scale = initialPinchDistance / currentDist;
 
-       // Apply Constraints similar to wheel
-       const currentAspect = width / height;
-       const maxZ = 3.0 * Math.max(1.0, currentAspect);
-       const MAX_ZOOM = PreciseNumber.fromNumber(maxZ);
-       const minZ = (width || 800) * Number.EPSILON * 2.0;
-       const MIN_ZOOM = PreciseNumber.fromNumber(minZ);
+        const prevZoom = zoomWidth;
+        let newZoomWidth = initialPinchZoom.scale(scale);
 
-       let hitMin = false;
-       let hitMax = false;
+        debugTouch.innerText = `Pinch Move: scale=${scale.toFixed(2)} d=${currentDist.toFixed(1)}`;
 
-       if (newZoomWidth.lt(MIN_ZOOM)) { newZoomWidth = MIN_ZOOM; hitMin = true; }
-       if (newZoomWidth.gt(MAX_ZOOM)) { newZoomWidth = MAX_ZOOM; hitMax = true; }
+        // Apply Constraints similar to wheel
+        const currentAspect = width / height;
+        const maxZ = 3.0 * Math.max(1.0, currentAspect);
+        const MAX_ZOOM = PreciseNumber.fromNumber(maxZ);
+        const minZ = (width || 800) * Number.EPSILON * 2.0;
+        const MIN_ZOOM = PreciseNumber.fromNumber(minZ);
 
-       // Visual Feedback logic reuse
-       if (scale < 1.0 && hitMin) triggerLimitEffect(); // Pinch Out (Zoom In)
-       if (scale > 1.0 && hitMax) triggerLimitEffect(); // Pinch In (Zoom Out)
+        let hitMin = false;
+        let hitMax = false;
 
-       // Center Logic: Zoom towards pinch center
-       const uvX = initialPinchCenterX / logicalWidth;
-       const uvY = initialPinchCenterY / logicalHeight;
+        if (newZoomWidth.lt(MIN_ZOOM)) {
+          newZoomWidth = MIN_ZOOM;
+          hitMin = true;
+        }
+        if (newZoomWidth.gt(MAX_ZOOM)) {
+          newZoomWidth = MAX_ZOOM;
+          hitMax = true;
+        }
 
-       const currentZoomHeight = initialPinchZoom.div(currentAspect);
-       const newZoomHeight = newZoomWidth.div(currentAspect);
+        // Visual Feedback logic reuse
+        if (scale < 1.0 && hitMin) triggerLimitEffect(); // Pinch Out (Zoom In)
+        if (scale > 1.0 && hitMax) triggerLimitEffect(); // Pinch In (Zoom Out)
 
-       const diffW = initialPinchZoom.sub(newZoomWidth);
-       const diffH = currentZoomHeight.sub(newZoomHeight);
+        // Center Logic: Zoom towards pinch center
+        const uvX = initialPinchCenterX / logicalWidth;
+        const uvY = initialPinchCenterY / logicalHeight;
 
-       const offX = diffW.mul(uvX - 0.5);
-       const offY = diffH.mul(uvY - 0.5);
+        const currentZoomHeight = initialPinchZoom.div(currentAspect);
+        const newZoomHeight = newZoomWidth.div(currentAspect);
 
-       centerX = initialPinchComplexX.add(offX);
-       centerY = initialPinchComplexY.add(offY);
-       zoomWidth = newZoomWidth;
+        const diffW = initialPinchZoom.sub(newZoomWidth);
+        const diffH = currentZoomHeight.sub(newZoomHeight);
 
-       applyConstraints();
-       if (!zoomWidth.eq(prevZoom) || !centerX.eq(initialPinchComplexX) || !centerY.eq(initialPinchComplexY)) startRender();
-    }
-  }, { passive: false, capture: true });
+        const offX = diffW.mul(uvX - 0.5);
+        const offY = diffH.mul(uvY - 0.5);
 
-  wrapper.addEventListener('touchend', () => {
-    isDragging = false;
-    initialPinchDistance = null;
-    initialPinchZoom = null;
-    initialPinchCenterX = null;
-    initialPinchCenterY = null;
-    initialPinchComplexX = null;
-    initialPinchComplexY = null;
-    debugTouch.innerText = 'Touch End';
-  }, { passive: false, capture: true });
+        centerX = initialPinchComplexX.add(offX);
+        centerY = initialPinchComplexY.add(offY);
+        zoomWidth = newZoomWidth;
+
+        applyConstraints();
+        if (!zoomWidth.eq(prevZoom) || !centerX.eq(initialPinchComplexX) || !centerY.eq(initialPinchComplexY))
+          startRender();
+      }
+    },
+    { passive: false, capture: true },
+  );
+
+  wrapper.addEventListener(
+    'touchend',
+    () => {
+      isDragging = false;
+      initialPinchDistance = null;
+      initialPinchZoom = null;
+      initialPinchCenterX = null;
+      initialPinchCenterY = null;
+      initialPinchComplexX = null;
+      initialPinchComplexY = null;
+      debugTouch.innerText = 'Touch End';
+    },
+    { passive: false, capture: true },
+  );
 
   // Add global intercept to stop any rogue touchmoves from zooming the body
-  document.addEventListener('touchmove', (e) => {
+  document.addEventListener(
+    'touchmove',
+    (e) => {
       e.preventDefault();
-  }, { passive: false, capture: true });
+    },
+    { passive: false, capture: true },
+  );
 
   wrapper.addEventListener(
     'wheel',
     (e) => {
       e.preventDefault();
-      
+
       const prevZoom = zoomWidth;
       const prevX = centerX;
       const prevY = centerY;
@@ -833,15 +917,15 @@ async function run() {
 
       // Check Limits
       if (newZoomWidth.lt(MIN_ZOOM)) {
-          newZoomWidth = MIN_ZOOM;
-          hitMin = true;
+        newZoomWidth = MIN_ZOOM;
+        hitMin = true;
       }
       // Check for effective reach of min limit (epsilon check for logic)
       if (newZoomWidth.toNumber() <= minZ * 1.01) hitMin = true;
 
       if (newZoomWidth.gt(MAX_ZOOM)) {
-          newZoomWidth = MAX_ZOOM;
-          hitMax = true;
+        newZoomWidth = MAX_ZOOM;
+        hitMax = true;
       }
       if (newZoomWidth.toNumber() >= maxZ * 0.99) hitMax = true;
 
@@ -852,7 +936,7 @@ async function run() {
       }
       // If we tried to zoom OUT (factor > 1) and are hitting MAX
       if (zoomFactor > 1.0 && hitMax) {
-         triggerLimitEffect();
+        triggerLimitEffect();
       }
 
       const rect = wrapper.getBoundingClientRect();
@@ -881,18 +965,16 @@ async function run() {
       zoomWidth = newZoomWidth;
 
       // Apply Constraints for Bounds (zoom is already clamped safely)
-      applyConstraints(); 
+      applyConstraints();
 
       // Visual Feedback Logic moved up to happen before offset calc
       // So we can remove the old block
 
       // Only render if effectively changed
-      const effectivelyChanged = !zoomWidth.eq(prevZoom) || 
-                      !centerX.eq(prevX) ||
-                      !centerY.eq(prevY);
+      const effectivelyChanged = !zoomWidth.eq(prevZoom) || !centerX.eq(prevX) || !centerY.eq(prevY);
 
       if (effectivelyChanged) {
-         startRender();
+        startRender();
       }
     },
     { passive: false },
@@ -944,7 +1026,7 @@ async function run() {
       // Prevent panning if at max zoom in (pincushion state) removed
       // We allow panning attempts, but applyConstraints will clamp them.
       centerX = centerX.add(PreciseNumber.fromNumber(velX * moveScale));
-      centerY = centerY.add(PreciseNumber.fromNumber(velY * moveScale / aspect));
+      centerY = centerY.add(PreciseNumber.fromNumber((velY * moveScale) / aspect));
       changed = true;
     }
 
@@ -956,10 +1038,8 @@ async function run() {
 
     if (changed) {
       applyConstraints();
-      
-      const effectivelyChanged = !zoomWidth.eq(prevZoom) || 
-                                 !centerX.eq(prevX) || 
-                                 !centerY.eq(prevY);
+
+      const effectivelyChanged = !zoomWidth.eq(prevZoom) || !centerX.eq(prevX) || !centerY.eq(prevY);
 
       if (effectivelyChanged) {
         startRender();
